@@ -1,0 +1,15 @@
+
+shooter=/opt/work/rust/shooter {
+ Cargo.lock
+ Cargo.toml
+ crab.rs.old
+ project.txt
+ rusty-tags.vi
+ start.vim
+ src=./src {
+  main.rs
+ }
+assets=./assets {
+  ferris.png
+}
+#note: start with vi -s start.vim
