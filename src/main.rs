@@ -1,15 +1,26 @@
 use bevy::input::keyboard::KeyboardInput;
-//use bevy::prelude::{App, Startup, Commands, Assets, StandardMaterial, Plane3d, default, Transform, AmbientLight, PointLight, Camera3dBundle, With, KeyCode, Time, DefaultPlugins, ResMut, PbrBundle, Cuboid, Vec3, EventReader, Quat, Update, PointLightBundle, Res, Color, Mesh, Query, Component, Meshable, SceneBundle,  GltfAssetLabel, AssetServer};
-use bevy::prelude::*;
-use bevy::render::mesh::VertexAttributeValues;
-use std::f32::consts::PI;
 use bevy::pbr::CascadeShadowConfigBuilder;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy::prelude::*;
+use bevy::render::camera::Viewport;
+use bevy::render::mesh::VertexAttributeValues;
+use std::env;
+use std::f32::consts::PI;
+
+use crate::input_n_state::InputNStatePlugin;
+use crate::menu::MenuPlugin;
+
+mod config;
+mod input_n_state;
+mod menu;
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    println!("arg count: {}", args.len());
+
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(MenuPlugin)
+        .add_plugins(InputNStatePlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, (move_cube, rotate_on_timer))
         .run();
@@ -22,7 +33,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>
+    asset_server: Res<AssetServer>,
 ) {
     // plane
     commands.spawn(PbrBundle {
@@ -42,33 +53,35 @@ fn setup(
             .collect();
         colorful_cube.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     }
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(colorful_cube),
-        // This is the default color, but note that vertex colors are
-        // multiplied by the base color, so you'll likely want this to be
-        // white if using vertex colors.
-        material: materials.add(Color::srgb(1., 1., 1.)),
-        transform: Transform::from_xyz(0.0, 0.5, 0.0),
-        ..default()
-    }).insert(Cube);
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(colorful_cube),
+            // This is the default color, but note that vertex colors are
+            // multiplied by the base color, so you'll likely want this to be
+            // white if using vertex colors.
+            material: materials.add(Color::srgb(1., 1., 1.)),
+            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            ..default()
+        })
+        .insert(Cube);
 
     // Light
-  //commands.spawn(PointLightBundle {
-  //    point_light: PointLight {
-  //        intensity: 100_000_000.0,
-  //        shadows_enabled: true,
-  //        ..default()
-  //    },
-  //    transform: Transform::from_xyz(4.0, 15.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
-  //    ..default()
-  //});
+    //commands.spawn(PointLightBundle {
+    //    point_light: PointLight {
+    //        intensity: 100_000_000.0,
+    //        shadows_enabled: true,
+    //        ..default()
+    //    },
+    //    transform: Transform::from_xyz(4.0, 15.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+    //    ..default()
+    //});
 
-   // ambient light
-  //commands.insert_resource(AmbientLight {
-  //    color: WHITE.into(),
-  //    brightness: 200.02,
-  //});
- commands.spawn(DirectionalLightBundle {
+    // ambient light
+    //commands.insert_resource(AmbientLight {
+    //    color: WHITE.into(),
+    //    brightness: 200.02,
+    //});
+    commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             illuminance: light_consts::lux::OVERCAST_DAY,
             shadows_enabled: true,
@@ -95,12 +108,21 @@ fn setup(
     commands.spawn(Camera3dBundle {
         //transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         transform: Transform::from_xyz(50.0, 15.0, 30.0).looking_at(Vec3::ZERO, Vec3::Y),
+        camera: Camera {
+            order: 1,
+            viewport: Some(Viewport {
+                physical_size: UVec2 { x: 200, y: 200 },
+                physical_position: UVec2 { x: 000, y: 000 },
+                ..default()
+            }),
+            ..default()
+        },
         ..default()
     });
 
     commands.spawn(SceneBundle {
-      transform: Transform::from_xyz(-1.0, 4.0, 0.0),
-      scene : asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman.glb")),
+        transform: Transform::from_xyz(-1.0, 4.0, 0.0),
+        scene: asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman.glb")),
         ..default()
     });
 }

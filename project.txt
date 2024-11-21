@@ -6,7 +6,16 @@ shooter=<set path here> {
  rusty-tags.vi
  start.vim
  src=./src {
-   main.rs
+  main.rs
+  input_n_state=input_n_state {
+   mod.rs
+  }
+  menu=menu {
+   mod.rs
+  }
+  config=config {
+   mod.rs
+  }
  }
  assets=./assets {
    littleman.glb
