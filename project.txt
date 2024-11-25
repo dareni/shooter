@@ -5,6 +5,7 @@ shooter=<set path here> {
  project.txt
  rusty-tags.vi
  start.vim
+ in.vim
  src=./src {
   main.rs
   input_n_state=input_n_state {
@@ -16,9 +17,15 @@ shooter=<set path here> {
   config=config {
    mod.rs
   }
+  server=server {
+   mod.rs
+  }
+  client=client {
+   mod.rs
+  }
  }
  assets=./assets {
    littleman.glb
  }
 
-#note: start with vi -s start.vim
+#note: start with vi -U start.vim

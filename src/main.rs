@@ -3,27 +3,40 @@ use bevy::pbr::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use bevy::render::camera::Viewport;
 use bevy::render::mesh::VertexAttributeValues;
-use std::env;
 use std::f32::consts::PI;
 
 use crate::input_n_state::InputNStatePlugin;
 use crate::menu::MenuPlugin;
+use crate::server::server_main;
+use crate::client::ClientPlugin;
 
+mod client;
 mod config;
 mod input_n_state;
 mod menu;
+mod server;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    println!("arg count: {}", args.len());
-
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(MenuPlugin)
-        .add_plugins(InputNStatePlugin)
-        .add_systems(Startup, setup)
-        .add_systems(Update, (move_cube, rotate_on_timer))
-        .run();
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        let exec_type = &args[1];
+        match exec_type.as_str() {
+            "server" => {
+                println!("Starting server...");
+                server_main();
+            }
+            _ => {}
+        }
+    } else {
+        App::new()
+            .add_plugins(DefaultPlugins)
+            .add_plugins(MenuPlugin)
+            .add_plugins(InputNStatePlugin)
+            .add_plugins(ClientPlugin)
+            .add_systems(Startup, setup)
+            .add_systems(Update, (move_cube, rotate_on_timer))
+            .run();
+    }
 }
 
 #[derive(Component)]
