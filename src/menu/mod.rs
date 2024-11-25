@@ -4,20 +4,27 @@ use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use egui::containers::panel::TopBottomPanel;
 use egui::pos2;
 
+use crate::client::*;
 use crate::config::*;
 use crate::input_n_state::*;
 
-
 pub struct MenuPlugin;
+//depends  ClientPlugin,InputNStatePlugin.
 
 impl Plugin for MenuPlugin {
-  fn build(&self, app: &mut App) {
-    app.add_plugins(EguiPlugin);
-    app.add_systems(Startup, setup_menu);
-    app.add_systems(Update, spawn_main_menu.run_if(in_state(AppState::MainMenu)));
-    app.add_systems(Update, spawn_config_window.run_if(in_state(MenuItem::Config)));
-    app.add_systems(Update, spawn_player_window.run_if(in_state(MenuItem::Players)));
-  }
+    fn build(&self, app: &mut App) {
+        app.add_plugins(EguiPlugin);
+        app.add_systems(Startup, setup_menu);
+        app.add_systems(Update, spawn_main_menu.run_if(in_state(AppState::MainMenu)));
+        app.add_systems(
+            Update,
+            spawn_config_window.run_if(in_state(MenuItem::Config)),
+        );
+        app.add_systems(
+            Update,
+            spawn_player_window.run_if(in_state(MenuItem::Players)),
+        );
+    }
 }
 
 pub fn spawn_main_menu(
@@ -70,32 +77,61 @@ pub fn spawn_config_window(
                 ui.label("name:");
                 ui.text_edit_singleline(&mut app_params.player_name);
             });
-            if ui.button("Ok").clicked() {
-                let copy: AppParams = app_params.dup();
-                match do_write_config(&copy) {
-                    Ok(_) => (),
-                    Err(e) => println!("Failed to write config file. {}", e),
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    if app_params.player_name.len() > 3 {
+                        let copy: AppParams = app_params.dup();
+                        match do_write_config(&copy) {
+                            Ok(_) => (),
+                            Err(e) => println!("Failed to write config file. {}", e),
+                        }
+                        ui.close_menu();
+                    } else {
+                        println!("Player name is a minumum of 4 characters.");
+                    }
                 }
-                next_state.set(AppState::Game);
-                ui.close_menu();
-            };
+
+                if ui.button("Close").clicked() {
+                    if app_params.player_name.len() > 3 {
+                        next_state.set(AppState::Game);
+                        ui.close_menu();
+                    } else {
+                        println!("Player name is a minumum of 4 characters.");
+                    }
+                }
+            });
         });
 }
 
 pub fn spawn_player_window(
     mut contexts: EguiContexts,
-    mut next_state: ResMut<NextState<AppState>>,
+    mut next_multiplayer: ResMut<NextState<Multiplayer>>,
+    app_params: Res<AppParams>,
+    mut r_client: ResMut<RenetClient>,
 ) {
-    bevy_egui::egui::Window::new("players ingame").show(contexts.ctx_mut(), |ui| {
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Players:");
+    bevy_egui::egui::Window::new("players ingame")
+        .collapsible(false)
+        .default_pos(pos2(30.0, 50.0))
+        .show(contexts.ctx_mut(), |ui| {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("Players:");
+            });
+            if app_params.player_name.len() > 3 {
+                if r_client.is_disconnected() {
+                    if ui.button("Connect").clicked() {
+                        r_client.connect(app_params.player_name.clone());
+                        next_multiplayer.set(Multiplayer::Connected);
+                    };
+                } else {
+                    if ui.button("Disconnect").clicked() {
+                        next_multiplayer.set(Multiplayer::Disconnecting);
+                    };
+                }
+            } else {
+                println!("Configuration of 'Player Name' required before connecting.");
+            }
         });
-        if ui.button("Ok").clicked() {
-            next_state.set(AppState::Game);
-            ui.close_menu();
-        };
-    });
 }
 
 pub fn setup_menu(mut commands: Commands, mut contexts: EguiContexts) {
@@ -111,4 +147,5 @@ pub fn setup_menu(mut commands: Commands, mut contexts: EguiContexts) {
     };
     commands.insert_resource(params);
     commands.insert_resource(DevParam { on: false });
+    commands.insert_resource(RenetClient::new());
 }

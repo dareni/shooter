@@ -13,7 +13,7 @@ impl AppParams {
     }
     pub fn default() -> AppParams {
         AppParams {
-            player_name: "".to_string(),
+            player_name: "player1".to_string(),
         }
     }
 }
@@ -34,8 +34,8 @@ pub enum AppState {
 #[derive(SubStates, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
 #[source(AppState = AppState::MainMenu)]
 pub enum MenuItem {
-    #[default]
     Config,
+    #[default]
     Players,
 }
 
