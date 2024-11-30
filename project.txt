@@ -27,5 +27,6 @@ shooter=<set path here> {
  assets=./assets {
    littleman.glb
  }
+}
 
 #note: start with vi -U start.vim

@@ -170,6 +170,7 @@ fn test_get_file() {
 
     let app_params = AppParams {
         player_name: "shrubbo".to_string(),
+        window_size: crate::Vec2::new(640.0, 480.0),
     };
     match write_config(&tmp_dir_str, &app_params) {
         Ok(_) => {}

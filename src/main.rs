@@ -25,17 +25,19 @@ fn main() {
                 println!("Starting server...");
                 server_main();
             }
+            "config" => {
+            }
             _ => {}
         }
     } else {
-        App::new()
-            .add_plugins(DefaultPlugins)
-            .add_plugins(MenuPlugin)
-            .add_plugins(InputNStatePlugin)
-            .add_plugins(ClientPlugin)
-            .add_systems(Startup, setup)
-            .add_systems(Update, (move_cube, rotate_on_timer))
-            .run();
+        let mut app:App = App::new();
+            app.add_plugins(DefaultPlugins);
+            app.add_plugins(InputNStatePlugin);
+            app.add_plugins(MenuPlugin);
+            app.add_plugins(ClientPlugin);
+            app.add_systems(Startup, setup);
+            app.add_systems(Update, (move_cube, rotate_on_timer));
+            app.run();
     }
 }
 

@@ -1,19 +1,18 @@
 use bevy::prelude::*;
 use bevy_egui::egui::menu;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{egui, EguiContexts};
 use egui::containers::panel::TopBottomPanel;
 use egui::pos2;
+use regex::Regex;
 
 use crate::client::*;
 use crate::config::*;
 use crate::input_n_state::*;
 
 pub struct MenuPlugin;
-//depends  ClientPlugin,InputNStatePlugin.
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin);
         app.add_systems(Startup, setup_menu);
         app.add_systems(Update, spawn_main_menu.run_if(in_state(AppState::MainMenu)));
         app.add_systems(
@@ -24,6 +23,11 @@ impl Plugin for MenuPlugin {
             Update,
             spawn_player_window.run_if(in_state(MenuItem::Players)),
         );
+        app.add_systems(
+            OnEnter(MenuItem::Config),
+            setup_config_window_params.before(initialise_config_window_params),
+        );
+        app.add_systems(OnExit(MenuItem::Config), finalise_config_window_params);
     }
 }
 
@@ -63,31 +67,82 @@ pub fn spawn_main_menu(
     });
 }
 
+fn only_numbers_mask(s: &mut String) {
+    let re = Regex::new(r"[^0-9]+").expect("band expression");
+    *s = re.replace_all(s, "").to_string();
+}
+
+fn validate_ok(app_params: &mut AppParamsInput) -> bool {
+    if app_params.player_name.len() < 4 {
+        println!("Player name must use more than 4 characters");
+        return false;
+    }
+    only_numbers_mask(&mut app_params.window_size_x);
+    only_numbers_mask(&mut app_params.window_size_y);
+    if app_params.window_size_x.len() < 3 {
+        println!("Screen with minimum 100.");
+        return false;
+    }
+    if app_params.window_size_y.len() < 3 {
+        println!("Screen with minimum 100.");
+        return false;
+    }
+    true
+}
+
 pub fn spawn_config_window(
     mut contexts: EguiContexts,
     mut app_params: ResMut<AppParams>,
+    mut app_params_input: ResMut<AppParamsInput>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     bevy_egui::egui::Window::new("shooter config")
         .collapsible(false)
         .default_pos(pos2(30.0, 50.0))
         .show(contexts.ctx_mut(), |ui| {
+            //.char_limit(4)
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label("name:");
-                ui.text_edit_singleline(&mut app_params.player_name);
+                ui.text_edit_singleline(&mut app_params_input.player_name);
             });
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("window dim (width, height):");
+                let width = ui.available_size().x;
+                let width = (width - 20.0) / 2.0;
+                ui.scope(|ui| {
+                    ui.set_max_width(width);
+                    if ui
+                        .text_edit_singleline(&mut app_params_input.window_size_x)
+                        .changed()
+                    {
+                        only_numbers_mask(&mut app_params_input.window_size_x);
+                    }
+                });
+                ui.scope(|ui| {
+                    ui.set_max_width(width);
+                    if ui
+                        .text_edit_singleline(&mut app_params_input.window_size_y)
+                        .changed()
+                    {
+                        only_numbers_mask(&mut app_params_input.window_size_y);
+                    }
+                });
+
+            });
+            ui.separator();
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
-                    if app_params.player_name.len() > 3 {
+                    if validate_ok(&mut app_params_input) {
+                        app_params_input.to(&mut app_params);
                         let copy: AppParams = app_params.dup();
                         match do_write_config(&copy) {
-                            Ok(_) => (),
+                            Ok(_) => ui.close_menu(),
                             Err(e) => println!("Failed to write config file. {}", e),
                         }
-                        ui.close_menu();
                     } else {
-                        println!("Player name is a minumum of 4 characters.");
+                        println!("Validation failed.");
                     }
                 }
 
@@ -134,7 +189,12 @@ pub fn spawn_player_window(
         });
 }
 
-pub fn setup_menu(mut commands: Commands, mut contexts: EguiContexts) {
+pub fn setup_menu(
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+    mut menu_item: ResMut<NextState<MenuItem>>,
+    mut windows: Query<&mut Window>,
+) {
     let con = contexts.ctx_mut();
     con.set_theme(egui::Theme::Light);
 
@@ -142,10 +202,44 @@ pub fn setup_menu(mut commands: Commands, mut contexts: EguiContexts) {
         Ok(param) => param,
         Err(e) => {
             println!("Failed to read configuration, using defaults. {}", e);
+            //Pop the config screen.
+            menu_item.set(MenuItem::Config);
             AppParams::default()
         }
     };
+    let mut window = windows.single_mut();
+    window.resolution.set(params.window_size.x, params.window_size.y);
     commands.insert_resource(params);
     commands.insert_resource(DevParam { on: false });
     commands.insert_resource(RenetClient::new());
+}
+
+pub fn setup_config_window_params(mut commands: Commands, app_params: Res<AppParams>) {
+    commands.insert_resource(AppParamsInput::new(&app_params));
+}
+
+pub fn initialise_config_window_params(
+    app_params: Res<AppParams>,
+    mut app_params_input: ResMut<AppParamsInput>,
+) {
+    app_params_input.from(&app_params);
+}
+
+pub fn finalise_config_window_params(mut commands: Commands) {
+    commands.remove_resource::<AppParamsInput>();
+}
+
+#[test]
+fn test_numbers_mask() {
+    let mut test_str = "12 34".to_string();
+    only_numbers_mask(&mut test_str);
+    assert!("1234" == test_str, "1test_str!={}", test_str);
+
+    test_str = "12  34".to_string();
+    only_numbers_mask(&mut test_str);
+    assert!("1234" == test_str, "2test_str={}", test_str);
+
+    test_str = "sdf!12 $ 34sf".to_string();
+    only_numbers_mask(&mut test_str);
+    assert!("1234" == test_str, "3test_str={}", test_str);
 }

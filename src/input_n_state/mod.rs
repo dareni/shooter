@@ -2,18 +2,51 @@ use bevy::prelude::*;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 #[derive(serde::Deserialize, serde::Serialize, Resource)]
+pub struct AppParamsInput {
+    pub player_name: String,
+    pub window_size_x: String,
+    pub window_size_y: String,
+}
+impl AppParamsInput {
+    pub fn new(app_params: &AppParams) -> AppParamsInput {
+        AppParamsInput{
+            player_name: app_params.player_name.clone(),
+            window_size_x: app_params.window_size.x.clone().to_string(),
+            window_size_y: app_params.window_size.y.clone().to_string(),
+        }
+    }
+
+    pub fn from(&mut self, app_params: &AppParams) {
+            self.player_name = app_params.player_name.clone();
+            self.window_size_x = app_params.window_size.x.clone().to_string();
+            self.window_size_y = app_params.window_size.y.clone().to_string();
+    }
+
+    pub fn to(&self, app_params: &mut AppParams) {
+            app_params.player_name = self.player_name.clone();
+            app_params.window_size = Vec2::new(
+                self.window_size_x.parse::<f32>().unwrap(),
+                self.window_size_y.parse::<f32>().unwrap(),
+            );
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Resource)]
 pub struct AppParams {
     pub player_name: String,
+    pub window_size: Vec2,
 }
 impl AppParams {
     pub fn dup(&self) -> AppParams {
         AppParams {
             player_name: self.player_name.clone(),
+            window_size: self.window_size.clone(),
         }
     }
     pub fn default() -> AppParams {
         AppParams {
             player_name: "player1".to_string(),
+            window_size: Vec2::new(640.0, 480.0),
         }
     }
 }

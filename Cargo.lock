@@ -3722,6 +3722,7 @@ dependencies = [
  "bevy_transform",
  "dirs",
  "egui",
+ "regex",
  "renetcode",
  "serde",
  "toml",
