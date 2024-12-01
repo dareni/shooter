@@ -129,16 +129,19 @@ pub fn spawn_config_window(
                         only_numbers_mask(&mut app_params_input.window_size_y);
                     }
                 });
-
             });
             ui.separator();
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
                     if validate_ok(&mut app_params_input) {
                         app_params_input.to(&mut app_params);
-                        let copy: AppParams = app_params.dup();
+                        let mut copy: AppParams = app_params.dup();
+                        copy.changed = false;
                         match do_write_config(&copy) {
-                            Ok(_) => ui.close_menu(),
+                            Ok(_) => {
+                                app_params.changed = false;
+                                ui.close_menu();
+                            }
                             Err(e) => println!("Failed to write config file. {}", e),
                         }
                     } else {
@@ -146,12 +149,14 @@ pub fn spawn_config_window(
                     }
                 }
 
-                if ui.button("Close").clicked() {
-                    if app_params.player_name.len() > 3 {
-                        next_state.set(AppState::Game);
-                        ui.close_menu();
-                    } else {
-                        println!("Player name is a minumum of 4 characters.");
+                if app_params.changed == false {
+                    if ui.button("Close").clicked() {
+                        if app_params.player_name.len() > 3 {
+                            next_state.set(AppState::Game);
+                            ui.close_menu();
+                        } else {
+                            println!("Player name is a minumum of 4 characters.");
+                        }
                     }
                 }
             });
@@ -192,24 +197,9 @@ pub fn spawn_player_window(
 pub fn setup_menu(
     mut commands: Commands,
     mut contexts: EguiContexts,
-    mut menu_item: ResMut<NextState<MenuItem>>,
-    mut windows: Query<&mut Window>,
 ) {
     let con = contexts.ctx_mut();
     con.set_theme(egui::Theme::Light);
-
-    let params = match do_read_config() {
-        Ok(param) => param,
-        Err(e) => {
-            println!("Failed to read configuration, using defaults. {}", e);
-            //Pop the config screen.
-            menu_item.set(MenuItem::Config);
-            AppParams::default()
-        }
-    };
-    let mut window = windows.single_mut();
-    window.resolution.set(params.window_size.x, params.window_size.y);
-    commands.insert_resource(params);
     commands.insert_resource(DevParam { on: false });
     commands.insert_resource(RenetClient::new());
 }

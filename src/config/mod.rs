@@ -14,29 +14,46 @@ use crate::input_n_state::AppParams;
 const SHOOTER_DIR: &str = "shooter";
 const SHOOTER_CONFIG: &str = "config.toml";
 
-pub fn do_read_config() -> Result<AppParams, String> {
-    match get_config_file_path() {
-        Ok(path) => match read_config(&path) {
-            Ok(param) => return Ok(param),
+pub fn do_read_config(config_path: Option<String>) -> Result<AppParams, String> {
+    let mut update_param_alternate_path = false;
+    let os_path: OsString = match &config_path {
+        Some(path) => {
+            update_param_alternate_path = true;
+            path.into()
+        }
+        None => match get_config_file_path() {
+            Ok(path) => path,
             Err(e) => return Err(format!("Failed to read config file. {}", e)),
         },
-        Err(e) => return Err(format!("Failed to read config file. {}", e)),
     };
+
+    match read_config(&os_path) {
+        Ok(mut param) => {
+            if update_param_alternate_path {
+                param.config_file = config_path;
+            }
+            Ok(param)
+        }
+        Err(e) => Err(format!("Failed to read config file. {}", e)),
+    }
 }
 
 pub fn do_write_config(app_params: &AppParams) -> Result<(), String> {
-    match get_config_file_path() {
-        Ok(path) => match write_config(&path, &app_params) {
-            Ok(_) => (),
+    let path: OsString = match &app_params.config_file {
+        Some(path) => path.into(),
+        None => match get_config_file_path() {
+            Ok(path) => path,
             Err(e) => return Err(format!("Failed to write config file. {}", e)),
         },
-        Err(e) => return Err(format!("Failed to write config file. {}", e)),
     };
-    Ok(())
+
+    match write_config(&path, &app_params) {
+        Ok(_) => Ok(()),
+        Err(e) => return Err(format!("Failed to write config file. {}", e)),
+    }
 }
 
 fn read_config(config_file_path_str: &OsString) -> Result<AppParams, String> {
-
     let config: File = match get_file(config_file_path_str, true) {
         Ok(file) => file,
         Err(e) => return Err(e),
@@ -46,21 +63,19 @@ fn read_config(config_file_path_str: &OsString) -> Result<AppParams, String> {
     let mut contents = String::new();
     let result = buf_reader.read_to_string(&mut contents);
     match result {
-      Ok(_) => (),
-      Err(e) => return Err(format!("Could not read file. {}",e)),
+        Ok(_) => (),
+        Err(e) => return Err(format!("Could not read file. {}", e)),
     };
     println!("file contents: {}", contents);
 
-    //let app_param: AppParams  = toml::from_str(&contents).unwrap(); 
     match toml::from_str(&contents) {
-      Ok(params) => Ok(params),
-      Err(e) => return Err(format!("Could not construct AppParams from file. {}", e)),
+        Ok(params) => Ok(params),
+        Err(e) => return Err(format!("Could not construct AppParams from file. {}", e)),
     }
 }
 
 fn write_config(config_file_path_str: &OsString, app_params: &AppParams) -> Result<(), String> {
     let config: File = match get_file(config_file_path_str, false) {
-        //let config:File  = match get_file(config_file_buf) {
         Ok(file) => file,
         Err(e) => return Err(e),
     };
@@ -97,7 +112,6 @@ pub fn get_config_file_path() -> Result<OsString, String> {
 
 pub fn get_file(config_file_buf: &OsString, read_file: bool) -> Result<File, String> {
     let config_file: &Path = Path::new(&config_file_buf);
-    //let config_file: &Path = config_file_buf.as_path();
 
     //Check dir containing the file exists, create if required.
     match config_file.parent() {
@@ -125,7 +139,11 @@ pub fn get_file(config_file_buf: &OsString, read_file: bool) -> Result<File, Str
 
     //Open the file.
     match config_file.try_exists() {
-        Ok(true) => match std::fs::OpenOptions::new().read(read_file).write(!read_file).open(config_file) {
+        Ok(true) => match std::fs::OpenOptions::new()
+            .read(read_file)
+            .write(!read_file)
+            .open(config_file)
+        {
             Ok(open_file) => Ok(open_file),
             Err(e) => {
                 return Err(format!(
@@ -171,6 +189,8 @@ fn test_get_file() {
     let app_params = AppParams {
         player_name: "shrubbo".to_string(),
         window_size: crate::Vec2::new(640.0, 480.0),
+        config_file: None,
+        changed: false,
     };
     match write_config(&tmp_dir_str, &app_params) {
         Ok(_) => {}
@@ -178,9 +198,8 @@ fn test_get_file() {
     }
     let params = match read_config(&tmp_dir_str) {
         Ok(param) => param,
-        Err(e) => {
-          return assert!(false, "Failure to read config {e}")
-        }, };
+        Err(e) => return assert!(false, "Failure to read config {e}"),
+    };
 
     assert!(params.player_name == app_params.player_name);
 }

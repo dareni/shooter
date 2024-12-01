@@ -5,10 +5,10 @@ use bevy::render::camera::Viewport;
 use bevy::render::mesh::VertexAttributeValues;
 use std::f32::consts::PI;
 
+use crate::client::ClientPlugin;
 use crate::input_n_state::InputNStatePlugin;
 use crate::menu::MenuPlugin;
 use crate::server::server_main;
-use crate::client::ClientPlugin;
 
 mod client;
 mod config;
@@ -21,24 +21,22 @@ fn main() {
     if args.len() > 1 {
         let exec_type = &args[1];
         match exec_type.as_str() {
-            "server" => {
+            "--server" => {
                 println!("Starting server...");
                 server_main();
-            }
-            "config" => {
+                return;
             }
             _ => {}
         }
-    } else {
-        let mut app:App = App::new();
-            app.add_plugins(DefaultPlugins);
-            app.add_plugins(InputNStatePlugin);
-            app.add_plugins(MenuPlugin);
-            app.add_plugins(ClientPlugin);
-            app.add_systems(Startup, setup);
-            app.add_systems(Update, (move_cube, rotate_on_timer));
-            app.run();
     }
+    let mut app: App = App::new();
+    app.add_plugins(DefaultPlugins);
+    app.add_plugins(InputNStatePlugin);
+    app.add_plugins(MenuPlugin);
+    app.add_plugins(ClientPlugin);
+    app.add_systems(Startup, setup);
+    app.add_systems(Update, (move_cube, rotate_on_timer));
+    app.run();
 }
 
 #[derive(Component)]
