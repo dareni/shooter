@@ -1,0 +1,6 @@
+The server holds the position and direction of all players.
+When a client connects to the server: 
+  it gives the server a position and direction for its player in MultiPlayerMessage::Connect.
+  The client receives the position and direction for all the player characters connected to the server.
+
+Player is controlled by the keyboard and mouse for the client. Player movements are sent to the server in MultiPlayerMessage::Move for distribution to other clients. Player movements are translated to the camera on the client. Player character movement data is received from the server in MultiPlayerMessage::Move and the entity representing the player is modified.  

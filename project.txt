@@ -5,6 +5,7 @@ shooter=<set path here> {
  project.txt
  rusty-tags.vi
  start.vim
+ notes.txt
  in.vim
  src=./src {
   main.rs
