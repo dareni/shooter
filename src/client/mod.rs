@@ -1,51 +1,61 @@
 use bevy::prelude::*;
 use renetcode::{ClientAuthentication, ConnectToken, NetcodeClient, NETCODE_MAX_PACKET_BYTES};
+use std::collections::VecDeque;
 use std::{
-    io::{Read,Write},
+    io::{Error, Read, Write},
     net::{SocketAddr, UdpSocket},
+    sync::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+        Mutex,
+    },
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use crate::input_n_state::MultiplayerState;
 use crate::server::*;
 
-#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
-pub enum Multiplayer {
-    #[default]
-    Disconnected,
-    Disconnecting,
-    Connected,
+#[derive(Resource)]
+pub struct MultiplayerMessageSender {
+    pub sender: Sender<MultiplayerMessage>,
+}
+#[derive(Resource)]
+pub struct MultiplayerMessageReceiver {
+    pub receiver: Mutex<Receiver<MultiplayerMessage>>,
 }
 
 #[repr(u8)]
-enum MultiPlayerMessage {
+pub enum MultiplayerMessage {
     Connect {
         player_id: u16,
         pos: Vec3,
         direction: Vec3,
         name: String,
     },
-    Move {
-        player_id: u16,
-        pos: Vec3,
-        direction: Vec3,
-    },
+    Disconnect,
+    // Move {
+    //     player_id: u16,
+    //     pos: Vec3,
+    //     direction: Vec3,
+    // },
     None,
 }
-impl MultiPlayerMessage {
+impl MultiplayerMessage {
     pub fn get_id(&self) -> u8 {
         match self {
-            MultiPlayerMessage::None => 0,
-            MultiPlayerMessage::Connect { .. } => 1,
-            MultiPlayerMessage::Move { .. } => 2,
+            MultiplayerMessage::None => 0,
+            MultiplayerMessage::Connect { .. } => 1,
+            MultiplayerMessage::Disconnect => 2,
+            //MultiplayerMessage::Move { .. } => 2,
         }
     }
 
-    pub fn get_buf(&self) -> Result<[u8; 100], std::io::Error> {
+    pub fn get_buf(&self) -> Result<[u8; 100], Error> {
         let buf = [0u8; 100];
         let mut cursor = std::io::Cursor::new(buf);
 
         match self {
-            MultiPlayerMessage::Connect {
+            MultiplayerMessage::Connect {
                 player_id,
                 pos,
                 direction,
@@ -64,8 +74,15 @@ impl MultiPlayerMessage {
                 cursor.write(&name.as_bytes())?;
                 Ok(cursor.into_inner())
             }
-            MultiPlayerMessage::Move { .. } => Ok(cursor.into_inner()),
-            MultiPlayerMessage::None => {
+            MultiplayerMessage::Disconnect => {
+                //TODO: replace MultiplayerMessage::Disconnect with bevy events.
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Bevy MultiplayerMessage::Disconnect should not be sent from the server?",
+                ));
+            }
+            //MultiplayerMessage::Move { .. } => Ok(cursor.into_inner()),
+            MultiplayerMessage::None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "No message??",
@@ -74,7 +91,7 @@ impl MultiPlayerMessage {
         }
     }
 
-    pub fn get(buf: &[u8]) -> Result<MultiPlayerMessage, std::io::Error> {
+    pub fn get(buf: &[u8]) -> Result<MultiplayerMessage, Error> {
         let cursor = &mut std::io::Cursor::new(buf);
         let message_id: [u8; 1] = read_bytes::<1>(cursor)?;
 
@@ -98,8 +115,8 @@ impl MultiPlayerMessage {
                 assert_eq!(size as usize, name_array.len());
                 cursor.read_exact(name_array)?;
                 let name = String::from_utf8(_name)
-                    .expect("Error extract name from buf for MultiPlayerMessage");
-                Ok(MultiPlayerMessage::Connect {
+                    .expect("Error extract name from buf for MultiplayerMessage");
+                Ok(MultiplayerMessage::Connect {
                     player_id,
                     pos,
                     direction,
@@ -107,40 +124,13 @@ impl MultiPlayerMessage {
                 })
             }
             //[2] => {}
-            _ => Ok(MultiPlayerMessage::None),
+            _ => Ok(MultiplayerMessage::None),
         }
     }
 }
 
-#[test]
-fn test_multiplayermessage_connect() {
-    let mess = MultiPlayerMessage::Connect {
-        player_id: 77u16,
-        pos: Vec3::new(1.1f32, 2.2f32, 3.3f32),
-        direction: Vec3::new(4.4f32, 5.5f32, 6.6f32),
-        name: "ikky".to_string(),
-    };
-    let buf = mess.get_buf().unwrap();
-    println!("buf:{:?}", buf);
-    let connect: MultiPlayerMessage = MultiPlayerMessage::get(&buf).unwrap().into();
-    match connect {
-        MultiPlayerMessage::Connect {
-            player_id,
-            pos,
-            direction,
-            name,
-        } => {
-            assert_eq!(player_id, 77);
-            assert_eq!(pos, Vec3::new(1.1f32, 2.2f32, 3.3f32));
-            assert_eq!(direction, Vec3::new(4.4f32, 5.5f32, 6.6f32));
-            assert_eq!(name, "ikky".to_string());
-        }
-        _ => panic!("test_multiplayermessage_connect fail!"),
-    };
-}
-
 #[inline]
-pub fn read_bytes<const N: usize>(src: &mut impl std::io::Read) -> Result<[u8; N], std::io::Error> {
+pub fn read_bytes<const N: usize>(src: &mut impl std::io::Read) -> Result<[u8; N], Error> {
     let mut data = [0u8; N];
     src.read_exact(&mut data)?;
     Ok(data)
@@ -152,27 +142,51 @@ pub struct RenetClient {
     udp_socket: Option<UdpSocket>,
     buffer: [u8; NETCODE_MAX_PACKET_BYTES],
     last_updated: Instant,
+    client_id_16: u16,
+    //The renclient:
+    //sender sends messages from the server to a channel for bevy to receive;
+    //sender: None,
+    sender: Sender<MultiplayerMessage>,
+    //receiver has access to a channel, containing messages from the bevy app,
+    //for transmission to the server. Receiver is wrapped in a mutex for concurrency.
+    receiver: Mutex<Receiver<MultiplayerMessage>>,
 }
 
 impl RenetClient {
     pub fn new() -> RenetClient {
+        //Use 2 multi-producer single consumer fifos to bridge messaging between the renet client and
+        //the bevy application. Initialise the client with the tx and rx of one channel. On
+        //connect() a second channel is created and RenetClient.sender is configured with the
+        //Sender of the this new channel. The resulting configuration allows transmission and
+        //reception of messages with the multiplayer server via 2 mpsc channels.
+        let (tx_app, rx_server) = mpsc::channel::<MultiplayerMessage>();
+        let receiver = Mutex::new(rx_server);
+        let sender = tx_app;
+
         RenetClient {
             client: None,
             udp_socket: None,
             buffer: [0u8; NETCODE_MAX_PACKET_BYTES],
             last_updated: Instant::now(),
+            client_id_16: 0,
+            sender,
+            receiver,
         }
     }
 
-    pub fn connect(&mut self, user_name: String) {
+    pub fn connect(
+        &mut self,
+        user_name: String,
+    ) -> (Sender<MultiplayerMessage>, Receiver<MultiplayerMessage>) {
         let server_addr: SocketAddr = format!("127.0.0.1:{}", PORT).parse().unwrap();
-        let username = Username(user_name);
+        let username = Username(user_name.clone());
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         println!(
             "Stating connecting at {:?} with username {}",
             now, username.0,
         );
         let client_id = now.as_millis() as u64;
+        self.client_id_16 = client_id as u16;
         let connect_token = ConnectToken::generate(
             now,
             PROTOCOL_ID,
@@ -194,14 +208,26 @@ impl RenetClient {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         self.client = Some(NetcodeClient::new(now, authentication).unwrap());
         self.last_updated = Instant::now();
+        let (tx_server, rx_app) = mpsc::channel::<MultiplayerMessage>();
+        let tx_app = self.sender.to_owned();
+        self.sender = tx_server;
+        (tx_app, rx_app)
     }
 
-    pub fn get_server_data(&mut self) {
+    pub fn server_transact(&mut self) -> Result<(), Error> {
+        //Runs in the bevy app loop while the state is connected.
+        //Checks the tcp socket for messages from the server for processing by the bevy app.
+        //Checks for messages from bevy for transmission to the server.
+
         //loop {
 
         let r_client = self.client.as_mut().expect("RenetClient not initialized!");
         if let Some(err) = r_client.disconnect_reason() {
-            panic!("Client error: {:?}", err);
+            //Send a message to bevy to : Command.remove_resource<RenetClient>()
+            println!("Client error: {:?}", err);
+            if let Err(e) = self.sender.send(MultiplayerMessage::Disconnect) {
+                println!("Could not send disconnect message to bevy. {}", e);
+            }
         }
         let r_socket = self
             .udp_socket
@@ -210,13 +236,18 @@ impl RenetClient {
 
         //Send data from this client to all other clients.
         if r_client.is_connected() {
-            let text = "abc".to_string();
-            let (addr, payload) = r_client.generate_payload_packet(text.as_bytes()).unwrap();
-            self.udp_socket
-                .as_ref()
-                .unwrap()
-                .send_to(payload, addr)
-                .unwrap();
+            let mut _rx = self.receiver.lock().unwrap();
+            for message in _rx.try_iter() {
+                //let (addr, payload) = r_client.generate_payload_packet(&message.get_buf()?).unwrap();
+                let (addr, payload) = r_client
+                    .generate_payload_packet(&message.get_buf()?)
+                    .unwrap();
+                self.udp_socket
+                    .as_ref()
+                    .unwrap()
+                    .send_to(payload, addr)
+                    .unwrap();
+            }
         } else {
             println!("Client is not yet connected");
         }
@@ -235,9 +266,24 @@ impl RenetClient {
                     );
                     if let Some(payload) = r_client.process_packet(&mut self.buffer[..len].as_mut())
                     {
-                        let text = String::from_utf8(payload.to_vec()).unwrap();
-                        println!("Received message from server: {}", text);
+                        //let text = String::from_utf8(payload.to_vec()).unwrap();
+                        //println!("Received message from server: {}", text);
                         //Update the world here with data from other clients.
+                        let server_message = MultiplayerMessage::get(payload)?;
+                        match server_message {
+                            MultiplayerMessage::Connect { .. } => {
+                                //let tx_to_app = self.sender.as_ref().unwrap();
+                                if let Err(e) = self.sender.send(server_message) {
+                                    println!(
+                                        "Did not receive a MultiplayerMessage from the server? {}",
+                                        e
+                                    );
+                                }
+                            }
+                            _ => {
+                                println!("Received a message but not a connect??")
+                            }
+                        }
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
@@ -249,6 +295,7 @@ impl RenetClient {
             r_socket.send_to(packet, addr).unwrap();
         }
         self.last_updated = Instant::now();
+        Ok(())
     }
 
     //Issue the disconnect client command and send the generated packet to the server.
@@ -278,26 +325,61 @@ impl RenetClient {
 }
 
 pub fn do_multiplayer_disconnect(mut r_client: ResMut<RenetClient>) {
-    println!("doing disconnect");
+    println!("doing disconnect...");
     r_client.disconnect();
 }
 
+pub fn do_finish_disconnect(r_client: ResMut<RenetClient>, mut commands: Commands) {
+    match r_client.client.as_ref() {
+        Some(client) => {
+            if client.is_disconnected() {
+                commands.remove_resource::<MultiplayerMessageSender>();
+                commands.remove_resource::<MultiplayerMessageReceiver>();
+                commands.remove_resource::<RenetClient>();
+                println!("disconnected.");
+            }
+        }
+        None => {}
+    }
+}
+
 pub fn do_multiplayer_server(mut r_client: ResMut<RenetClient>) {
-    //Pass entity data to the server from here.
-    r_client.get_server_data();
+    if let Err(e) = r_client.server_transact() {
+        println!("Error transacting with server. {}", e);
+    }
+}
+
+pub fn set_connected(mut next_multiplayer: ResMut<NextState<MultiplayerState>>) {
+    next_multiplayer.set(MultiplayerState::Connected);
+}
+
+pub fn set_disconnected(mut next_multiplayer: ResMut<NextState<MultiplayerState>>) {
+    next_multiplayer.set(MultiplayerState::Disconnected);
 }
 
 pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<Multiplayer>();
         app.add_systems(
             Update,
-            do_multiplayer_server.run_if(in_state(Multiplayer::Connected)),
+            do_multiplayer_server
+                .run_if(in_state(MultiplayerState::Connected).and(resource_exists::<RenetClient>)),
         );
         app.add_systems(
-            OnEnter(Multiplayer::Disconnecting),
-            do_multiplayer_disconnect,
+            OnEnter(MultiplayerState::Disconnecting),
+            do_multiplayer_disconnect.run_if(resource_exists::<RenetClient>),
+        );
+        app.add_systems(
+            Update,
+            do_finish_disconnect.run_if(
+                in_state(MultiplayerState::Disconnecting).and(resource_exists::<RenetClient>),
+            ),
+        );
+        app.add_systems(OnEnter(MultiplayerState::Connecting), set_connected);
+
+        app.add_systems(
+            Update,
+            set_disconnected.run_if(resource_removed::<RenetClient>),
         );
     }
 }
@@ -305,7 +387,9 @@ impl Plugin for ClientPlugin {
 #[cfg(test)]
 mod test {
 
+    use crate::client::MultiplayerMessage;
     use crate::server::*;
+    use bevy::prelude::*;
     use renetcode::{ClientAuthentication, ConnectToken, NetcodeClient, NETCODE_MAX_PACKET_BYTES};
     use std::{
         net::{SocketAddr, UdpSocket},
@@ -316,6 +400,33 @@ mod test {
         thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn test_multiplayermessage_connect() {
+        let mess = MultiplayerMessage::Connect {
+            player_id: 77u16,
+            pos: Vec3::new(1.1f32, 2.2f32, 3.3f32),
+            direction: Vec3::new(4.4f32, 5.5f32, 6.6f32),
+            name: "ikky".to_string(),
+        };
+        let buf = mess.get_buf().unwrap();
+        println!("buf:{:?}", buf);
+        let connect: MultiplayerMessage = MultiplayerMessage::get(&buf).unwrap().into();
+        match connect {
+            MultiplayerMessage::Connect {
+                player_id,
+                pos,
+                direction,
+                name,
+            } => {
+                assert_eq!(player_id, 77);
+                assert_eq!(pos, Vec3::new(1.1f32, 2.2f32, 3.3f32));
+                assert_eq!(direction, Vec3::new(4.4f32, 5.5f32, 6.6f32));
+                assert_eq!(name, "ikky".to_string());
+            }
+            _ => panic!("test_multiplayermessage_connect fail!"),
+        };
+    }
 
     fn client_main(user_name: String) {
         let server_addr: SocketAddr = format!("127.0.0.1:{}", PORT).parse().unwrap();

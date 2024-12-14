@@ -8,12 +8,14 @@ use std::f32::consts::PI;
 use crate::client::ClientPlugin;
 use crate::input_n_state::InputNStatePlugin;
 use crate::menu::MenuPlugin;
+use crate::players::PlayersPlugin;
 use crate::server::server_main;
 
 mod client;
 mod config;
 mod input_n_state;
 mod menu;
+mod players;
 mod server;
 
 fn main() {
@@ -34,6 +36,7 @@ fn main() {
     app.add_plugins(InputNStatePlugin);
     app.add_plugins(MenuPlugin);
     app.add_plugins(ClientPlugin);
+    app.add_plugins(PlayersPlugin);
     app.add_systems(Startup, setup);
     app.add_systems(Update, (move_cube, rotate_on_timer));
     app.run();
@@ -113,8 +116,12 @@ fn setup(
     commands.spawn((
         Transform::from_xyz(-2.0, 4.0, 0.0),
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman.glb"))),
+        LittleMan {},
     ));
 }
+
+#[derive(Component)]
+pub struct LittleMan {}
 
 fn move_cube(
     mut player_query: Query<&mut Transform, With<Cube>>,

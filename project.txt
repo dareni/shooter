@@ -21,6 +21,9 @@ shooter=<set path here> {
   server=server {
    mod.rs
   }
+  players=players {
+   mod.rs
+  }
   client=client {
    mod.rs
   }

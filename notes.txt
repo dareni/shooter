@@ -1,6 +1,47 @@
 The server holds the position and direction of all players.
-When a client connects to the server: 
+When a client connects to the server:
   it gives the server a position and direction for its player in MultiPlayerMessage::Connect.
   The client receives the position and direction for all the player characters connected to the server.
 
-Player is controlled by the keyboard and mouse for the client. Player movements are sent to the server in MultiPlayerMessage::Move for distribution to other clients. Player movements are translated to the camera on the client. Player character movement data is received from the server in MultiPlayerMessage::Move and the entity representing the player is modified.  
+Player is controlled by the keyboard and mouse for the client. Player movements are sent to the server in MultiPlayerMessage::Move for distribution to other clients. Player movements are translated to the camera on the client. Player character movement data is received from the server in MultiPlayerMessage::Move and the entity representing the player is modified.
+
+Multiplayer Connect
+-------------------
+Connections are initiated from the menu mod.
+The Multiplayer menu option maps to a window dependent on MultiplayerState:
+ - MultiplayerState::Connected -> MenuItem::Players -> Players Window
+ - MultiplayerState::Disconnected -> MenuItem::Servers -> Servers Window
+
+Connect button on Servers window ->
+ - Creates a new RenetClient and initiates a server connection,
+ - Inserts resources RenetClient, MultiplayerMessageSender, MultiplayerMessageReceiver into bevy.
+ - Sets MultiplayerState::Connecting.
+
+At this point the client needs to poll the network socket for the server reply.
+
+System menu::set_connected runs on entering state MultiplayerState::Connecting and sets Multiplayer::Connected
+allowing client::do_multiplayer_server to complete the connection to the server.
+
+//System players::check_server_connection runs in state MultiplayerState::Connecting and checks the RenetClient resource for the completion of the server connection. Once the client status is connected the MultiplayerState::Connected is set.
+
+Multiplayer Disconnect
+----------------------
+Disconnect button on Players window -> sets MultiplayerState::Disconnecting.
+
+System client::do_multiplayer_disconnect runs on_enter MultiplayerState::Disconnecting and calls RenetClient.disconnect() which
+sends a disconnect packet to the server.
+
+System client::do_finish_disconnect runs on MultiplayerState::Disconnecting while the RenetClient resource exists.
+If the RenetClient is disconnected it is removed from bevy along with MultiplayerMessageSender, MultiplayerMessageReceiver.
+
+System menu::set_disconnected runs if resource RenetClient is removed. Sets MultiplayerState::Disconnected.
+
+System player::update_world_from_server_messages can receive a MultiplayerMessage::Disconnect when the client loop encounters a server disconnect. In the case of this message, resources RenetClient, MultiplayerMessageSender and MultiplayerMessageReceiver are removed.
+
+
+//Commented
+//System players::disconnect_from_server runs in state MultiplayerState::Disconnecting and polls the receiver resource
+//for a MultiplayerMessage::Disconnect. On reception of the disconnect message, the RenetClient resource is removed and the MultiplayerState::Disconnected is set.
+
+TODO:
+ - Adjust renetclient operation : add a method between connect and server_transact to establish the server connection.

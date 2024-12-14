@@ -92,16 +92,16 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
 
         let lapsed = Instant::now() - last_ping;
         if lapsed.as_secs_f32() > 2.0 {
-          last_ping = Instant::now();
-        for client_id in server.clients_id().into_iter() {
-            let server_result = server.update_client(client_id);
-            handle_server_result(
-                server_result,
-                &udp_socket,
-                &mut received_messages,
-                &mut usernames,
-            );
-        }
+            last_ping = Instant::now();
+            for client_id in server.clients_id().into_iter() {
+                let server_result = server.update_client(client_id);
+                handle_server_result(
+                    server_result,
+                    &udp_socket,
+                    &mut received_messages,
+                    &mut usernames,
+                );
+            }
         }
 
         last_updated = Instant::now();

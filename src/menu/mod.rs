@@ -1,9 +1,9 @@
 use bevy::prelude::*;
-use bevy_egui::egui::menu;
-use bevy_egui::{egui, EguiContexts};
+use bevy_egui::{egui::menu, EguiContexts};
 use egui::containers::panel::TopBottomPanel;
 use egui::pos2;
 use regex::Regex;
+use std::sync::Mutex;
 
 use crate::client::*;
 use crate::config::*;
@@ -24,6 +24,10 @@ impl Plugin for MenuPlugin {
             spawn_player_window.run_if(in_state(MenuItem::Players)),
         );
         app.add_systems(
+            Update,
+            spawn_server_window.run_if(in_state(MenuItem::Servers)),
+        );
+        app.add_systems(
             OnEnter(MenuItem::Config),
             setup_config_window_params.before(initialise_config_window_params),
         );
@@ -35,6 +39,7 @@ pub fn spawn_main_menu(
     mut contexts: EguiContexts,
     mut next_item: ResMut<NextState<MenuItem>>,
     mut next_state: ResMut<NextState<AppState>>,
+    multiplayer_state: Res<State<MultiplayerState>>,
     mut is_w_inspect: ResMut<DevParam>,
 ) {
     TopBottomPanel::top("menu_bar").show(contexts.ctx_mut(), |ui| {
@@ -44,8 +49,18 @@ pub fn spawn_main_menu(
                 next_item.set(MenuItem::Config);
                 ui.close_menu();
             }
-            if ui.button("Players").clicked() {
-                next_item.set(MenuItem::Players);
+            if ui.button("Multiplayer").clicked() {
+                match multiplayer_state.get() {
+                    MultiplayerState::Connected => {
+                        next_item.set(MenuItem::Players);
+                    }
+                    MultiplayerState::Disconnected => {
+                        next_item.set(MenuItem::Servers);
+                    }
+                    _ => {
+                        println!("{:?}", multiplayer_state.get())
+                    }
+                }
                 ui.close_menu();
             }
             if ui.button("Resume Game").clicked() {
@@ -163,13 +178,14 @@ pub fn spawn_config_window(
         });
 }
 
-pub fn spawn_player_window(
+pub fn spawn_server_window(
     mut contexts: EguiContexts,
-    mut next_multiplayer: ResMut<NextState<Multiplayer>>,
+    mut next_multiplayer: ResMut<NextState<MultiplayerState>>,
+    mut next_menu_item: ResMut<NextState<MenuItem>>,
     app_params: Res<AppParams>,
-    mut r_client: ResMut<RenetClient>,
+    mut commands: Commands,
 ) {
-    bevy_egui::egui::Window::new("players ingame")
+    bevy_egui::egui::Window::new("Game Servers")
         .collapsible(false)
         .default_pos(pos2(30.0, 50.0))
         .show(contexts.ctx_mut(), |ui| {
@@ -178,14 +194,44 @@ pub fn spawn_player_window(
                 ui.label("Players:");
             });
             if app_params.player_name.len() > 3 {
-                if r_client.is_disconnected() {
-                    if ui.button("Connect").clicked() {
-                        r_client.connect(app_params.player_name.clone());
-                        next_multiplayer.set(Multiplayer::Connected);
-                    };
-                } else {
+                if ui.button("Connect").clicked() {
+                    let mut r_client = RenetClient::new();
+                    let (sender, rx) = r_client.connect(app_params.player_name.clone());
+                    commands.insert_resource(r_client);
+                    commands.insert_resource(MultiplayerMessageSender { sender });
+                    let receiver = Mutex::new(rx);
+                    commands.insert_resource(MultiplayerMessageReceiver { receiver });
+                    next_multiplayer.set(MultiplayerState::Connecting);
+                    next_menu_item.set(MenuItem::None);
+                    ui.close_menu();
+                };
+            } else {
+                println!("Configuration of 'Player Name' required before connecting.");
+            }
+        });
+}
+
+pub fn spawn_player_window(
+    mut contexts: EguiContexts,
+    mut next_multiplayer: ResMut<NextState<MultiplayerState>>,
+    mut next_menu_item: ResMut<NextState<MenuItem>>,
+    app_params: Res<AppParams>,
+    mut r_client: ResMut<RenetClient>,
+) {
+    bevy_egui::egui::Window::new("Players Ingame")
+        .collapsible(false)
+        .default_pos(pos2(30.0, 50.0))
+        .show(contexts.ctx_mut(), |ui| {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("Players:");
+            });
+            if app_params.player_name.len() > 3 {
+                if !r_client.is_disconnected() {
                     if ui.button("Disconnect").clicked() {
-                        next_multiplayer.set(Multiplayer::Disconnecting);
+                        next_multiplayer.set(MultiplayerState::Disconnecting);
+                        next_menu_item.set(MenuItem::None);
+                        ui.close_menu();
                     };
                 }
             } else {
@@ -194,14 +240,11 @@ pub fn spawn_player_window(
         });
 }
 
-pub fn setup_menu(
-    mut commands: Commands,
-    mut contexts: EguiContexts,
-) {
+pub fn setup_menu(mut commands: Commands, mut contexts: EguiContexts) {
     let con = contexts.ctx_mut();
     con.set_theme(egui::Theme::Light);
     commands.insert_resource(DevParam { on: false });
-    commands.insert_resource(RenetClient::new());
+    //commands.insert_resource(RenetClient::new());
 }
 
 pub fn setup_config_window_params(mut commands: Commands, app_params: Res<AppParams>) {

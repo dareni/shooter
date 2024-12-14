@@ -3,6 +3,7 @@ use crate::config::get_file;
 use bevy::prelude::*;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
+use bevy_inspector_egui::quick::StateInspectorPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_inspector_egui::InspectorOptions;
 
@@ -68,7 +69,8 @@ pub struct DevParam {
     pub on: bool,
 }
 
-#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+//#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default, Reflect)]
+#[derive(Default, States, Debug, Clone, Eq, PartialEq, Hash, Reflect)]
 pub enum AppState {
     #[default]
     MainMenu,
@@ -76,18 +78,31 @@ pub enum AppState {
     GameOver,
 }
 
-#[derive(SubStates, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default, Reflect)]
+pub enum MultiplayerState {
+    #[default]
+    Disconnected,
+    Disconnecting,
+    Connected,
+    Connecting,
+}
+
+#[derive(SubStates, Debug, Clone, Copy, Eq, PartialEq, Hash, Default, Reflect)]
 #[source(AppState = AppState::MainMenu)]
 pub enum MenuItem {
     Config,
     #[default]
+    Servers,
     Players,
+    None,
 }
 
 pub struct InputNStatePlugin;
 impl Plugin for InputNStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>();
+        app.init_state::<MultiplayerState>();
+        app.register_type::<AppState>();
         app.add_sub_state::<MenuItem>();
         app.add_systems(Startup, initialise_app);
         app.add_systems(
@@ -100,6 +115,11 @@ impl Plugin for InputNStatePlugin {
         app.add_plugins(WorldInspectorPlugin::default().run_if(do_world_inspector()));
         app.add_plugins(
             ResourceInspectorPlugin::<AppParams>::default().run_if(do_world_inspector()),
+        );
+        app.add_plugins(StateInspectorPlugin::<AppState>::default().run_if(do_world_inspector()));
+        app.add_plugins(StateInspectorPlugin::<MenuItem>::default().run_if(do_world_inspector()));
+        app.add_plugins(
+            StateInspectorPlugin::<MultiplayerState>::default().run_if(do_world_inspector()),
         );
     }
 }
@@ -138,7 +158,10 @@ fn initialise_app(
     let params = match do_read_config(config_file_path.clone()) {
         Ok(param) => param,
         Err(e) => {
-            println!("Failed to read configuration, using defaults. (input_n_state) {}", e);
+            println!(
+                "Failed to read configuration, using defaults. (input_n_state) {}",
+                e
+            );
             next_state.set(AppState::MainMenu);
             next_item.set(MenuItem::Config);
             let mut apps = AppParams::default();
