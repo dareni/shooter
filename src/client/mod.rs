@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use renetcode::{ClientAuthentication, ConnectToken, NetcodeClient, NETCODE_MAX_PACKET_BYTES};
-use std::collections::VecDeque;
 use std::{
     io::{Error, Read, Write},
     net::{SocketAddr, UdpSocket},
@@ -14,6 +13,7 @@ use std::{
 
 use crate::input_n_state::MultiplayerState;
 use crate::server::*;
+use crate::*;
 
 #[derive(Resource)]
 pub struct MultiplayerMessageSender {
@@ -27,12 +27,14 @@ pub struct MultiplayerMessageReceiver {
 #[repr(u8)]
 pub enum MultiplayerMessage {
     Connect {
-        player_id: u16,
+        client_id: u64,
         pos: Vec3,
         direction: Vec3,
         name: String,
     },
-    Disconnect,
+    Disconnect {
+        client_id: u64,
+    },
     // Move {
     //     player_id: u16,
     //     pos: Vec3,
@@ -45,7 +47,7 @@ impl MultiplayerMessage {
         match self {
             MultiplayerMessage::None => 0,
             MultiplayerMessage::Connect { .. } => 1,
-            MultiplayerMessage::Disconnect => 2,
+            MultiplayerMessage::Disconnect { .. } => 2,
             //MultiplayerMessage::Move { .. } => 2,
         }
     }
@@ -56,13 +58,13 @@ impl MultiplayerMessage {
 
         match self {
             MultiplayerMessage::Connect {
-                player_id,
+                client_id,
                 pos,
                 direction,
                 name,
             } => {
                 cursor.write(&self.get_id().to_le_bytes())?;
-                cursor.write(&player_id.to_le_bytes())?;
+                cursor.write(&client_id.to_le_bytes())?;
                 cursor.write(&pos.x.to_le_bytes())?;
                 cursor.write(&pos.y.to_le_bytes())?;
                 cursor.write(&pos.z.to_le_bytes())?;
@@ -74,12 +76,10 @@ impl MultiplayerMessage {
                 cursor.write(&name.as_bytes())?;
                 Ok(cursor.into_inner())
             }
-            MultiplayerMessage::Disconnect => {
-                //TODO: replace MultiplayerMessage::Disconnect with bevy events.
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Bevy MultiplayerMessage::Disconnect should not be sent from the server?",
-                ));
+            MultiplayerMessage::Disconnect { client_id } => {
+                cursor.write(&self.get_id().to_le_bytes())?;
+                cursor.write(&client_id.to_le_bytes())?;
+                Ok(cursor.into_inner())
             }
             //MultiplayerMessage::Move { .. } => Ok(cursor.into_inner()),
             MultiplayerMessage::None => {
@@ -98,7 +98,7 @@ impl MultiplayerMessage {
         match message_id {
             [1] => {
                 //let _id: u16 = u16::from_le_bytes(read_bytes::<2>(cursor)?);
-                let player_id: u16 = u16::from_le_bytes(read_bytes::<2>(cursor)?);
+                let client_id: u64 = u64::from_le_bytes(read_bytes::<8>(cursor)?);
                 let pos: Vec3 = Vec3::new(
                     f32::from_le_bytes(read_bytes::<4>(cursor)?),
                     f32::from_le_bytes(read_bytes::<4>(cursor)?),
@@ -117,13 +117,16 @@ impl MultiplayerMessage {
                 let name = String::from_utf8(_name)
                     .expect("Error extract name from buf for MultiplayerMessage");
                 Ok(MultiplayerMessage::Connect {
-                    player_id,
+                    client_id,
                     pos,
                     direction,
                     name,
                 })
             }
-            //[2] => {}
+            [2] => {
+                let client_id: u64 = u64::from_le_bytes(read_bytes::<8>(cursor)?);
+                Ok(MultiplayerMessage::Disconnect { client_id })
+            }
             _ => Ok(MultiplayerMessage::None),
         }
     }
@@ -225,7 +228,10 @@ impl RenetClient {
         if let Some(err) = r_client.disconnect_reason() {
             //Send a message to bevy to : Command.remove_resource<RenetClient>()
             println!("Client error: {:?}", err);
-            if let Err(e) = self.sender.send(MultiplayerMessage::Disconnect) {
+            let msg = MultiplayerMessage::Disconnect {
+                client_id: r_client.client_id(),
+            };
+            if let Err(e) = self.sender.send(msg) {
                 println!("Could not send disconnect message to bevy. {}", e);
             }
         }
@@ -259,29 +265,31 @@ impl RenetClient {
                         // Ignore packets that are not from the server
                         continue;
                     }
-                    println!(
-                        "Received decrypted message {:?} from server {}",
-                        &self.buffer[..len].as_mut(),
-                        addr
-                    );
+                    // println!(
+                    //     "Received decrypted message {:?} from server {}",
+                    //     &self.buffer[..len].as_mut(),
+                    //     addr
+                    // );
                     if let Some(payload) = r_client.process_packet(&mut self.buffer[..len].as_mut())
                     {
                         //let text = String::from_utf8(payload.to_vec()).unwrap();
                         //println!("Received message from server: {}", text);
                         //Update the world here with data from other clients.
-                        let server_message = MultiplayerMessage::get(payload)?;
+                        let server_message = MultiplayerMessage::get(payload);
+                        //TODO: replace server_message with Ok(server_message)
                         match server_message {
-                            MultiplayerMessage::Connect { .. } => {
-                                //let tx_to_app = self.sender.as_ref().unwrap();
-                                if let Err(e) = self.sender.send(server_message) {
-                                    println!(
-                                        "Did not receive a MultiplayerMessage from the server? {}",
+                            Ok(msg) => {
+                                let msg_id = msg.get_id();
+                                println!("Received msg type {} from server.", msg_id);
+                                if let Err(e) = self.sender.send(msg) {
+                                    eprintln!(
+                                        "Received a faulty  MultiplayerMessage from the server? {}",
                                         e
                                     );
                                 }
                             }
-                            _ => {
-                                println!("Received a message but not a connect??")
+                            Err(e) => {
+                                eprintln!("Error receiving server message: {}", e);
                             }
                         }
                     }
@@ -322,6 +330,10 @@ impl RenetClient {
             None => true,
         }
     }
+
+    pub fn get_client_id(&self) -> u64 {
+        self.client.as_ref().unwrap().client_id()
+    }
 }
 
 pub fn do_multiplayer_disconnect(mut r_client: ResMut<RenetClient>) {
@@ -329,17 +341,37 @@ pub fn do_multiplayer_disconnect(mut r_client: ResMut<RenetClient>) {
     r_client.disconnect();
 }
 
-pub fn do_finish_disconnect(r_client: ResMut<RenetClient>, mut commands: Commands) {
+pub fn do_finish_disconnect(
+    r_client: ResMut<RenetClient>,
+    mut commands: Commands,
+    mut players: Query<(Entity, &ClientId, Option<&FirstPerson>)>,
+) {
     match r_client.client.as_ref() {
         Some(client) => {
             if client.is_disconnected() {
+                players
+                    .iter_mut()
+                    .for_each(|(entity, _client_id, first_person)| {
+                        println!("removing entity: {} for disconnect.", entity);
+                        match first_person {
+                            Some(_) => {
+                                commands.entity(entity).remove::<ClientId>();
+                            }
+                            None => {
+                                commands.entity(entity).despawn_recursive();
+                            }
+                        }
+                    });
+
                 commands.remove_resource::<MultiplayerMessageSender>();
                 commands.remove_resource::<MultiplayerMessageReceiver>();
                 commands.remove_resource::<RenetClient>();
                 println!("disconnected.");
             }
         }
-        None => {}
+        None => {
+            println!("do_finish_disconnect: Client is not disconnected in disconnecting state??");
+        }
     }
 }
 
@@ -404,7 +436,7 @@ mod test {
     #[test]
     fn test_multiplayermessage_connect() {
         let mess = MultiplayerMessage::Connect {
-            player_id: 77u16,
+            client_id: 77u64,
             pos: Vec3::new(1.1f32, 2.2f32, 3.3f32),
             direction: Vec3::new(4.4f32, 5.5f32, 6.6f32),
             name: "ikky".to_string(),
@@ -414,18 +446,32 @@ mod test {
         let connect: MultiplayerMessage = MultiplayerMessage::get(&buf).unwrap().into();
         match connect {
             MultiplayerMessage::Connect {
-                player_id,
+                client_id,
                 pos,
                 direction,
                 name,
             } => {
-                assert_eq!(player_id, 77);
+                assert_eq!(client_id, 77);
                 assert_eq!(pos, Vec3::new(1.1f32, 2.2f32, 3.3f32));
                 assert_eq!(direction, Vec3::new(4.4f32, 5.5f32, 6.6f32));
                 assert_eq!(name, "ikky".to_string());
             }
             _ => panic!("test_multiplayermessage_connect fail!"),
         };
+    }
+
+    #[test]
+    fn test_multiplayermessage_disconnect() {
+        let mess = MultiplayerMessage::Disconnect { client_id: 77u64 };
+        let buf = mess.get_buf().unwrap();
+        println!("buf:{:?}", buf);
+        let disconnect: MultiplayerMessage = MultiplayerMessage::get(&buf).unwrap().into();
+        match disconnect {
+            MultiplayerMessage::Disconnect { client_id } => {
+                assert_eq!(client_id, 77);
+            }
+            _ => panic!("test_multiplayermessage_connect fail!"),
+        }
     }
 
     fn client_main(user_name: String) {

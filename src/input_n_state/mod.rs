@@ -102,6 +102,7 @@ impl Plugin for InputNStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>();
         app.init_state::<MultiplayerState>();
+        app.register_type::<MultiplayerState>();
         app.register_type::<AppState>();
         app.add_sub_state::<MenuItem>();
         app.add_systems(Startup, initialise_app);
@@ -170,10 +171,17 @@ fn initialise_app(
             apps
         }
     };
-    let mut window = windows.single_mut();
-    window
-        .resolution
-        .set(params.window_size.x, params.window_size.y);
+    let win = windows.get_single_mut();
+    match win {
+        Ok(mut window) => {
+            window
+                .resolution
+                .set(params.window_size.x, params.window_size.y);
+        }
+        Err(e) => {
+            println!("Window error: {}", e);
+        }
+    }
     commands.insert_resource(params);
 }
 

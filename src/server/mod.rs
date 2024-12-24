@@ -1,3 +1,4 @@
+use bevy::prelude::*;
 use renetcode::{
     NetcodeServer, ServerAuthentication, ServerConfig, ServerResult, NETCODE_KEY_BYTES,
     NETCODE_MAX_PACKET_BYTES, NETCODE_USER_DATA_BYTES,
@@ -9,6 +10,8 @@ use std::{
     net::{SocketAddr, UdpSocket},
     time::Instant,
 };
+
+use crate::client::*;
 
 pub const PRIVATE_KEY: &[u8; 32] = b"an example very very secret key."; // 32-bytes
 pub const PROTOCOL_ID: u64 = 123456789;
@@ -55,14 +58,15 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
     let mut server: NetcodeServer = NetcodeServer::new(config);
     let udp_socket = UdpSocket::bind(addr).unwrap();
     udp_socket.set_nonblocking(true).unwrap();
-    let mut received_messages = vec![];
+    let mut messages_to_deliver: Vec<(Destination, MultiplayerMessage)> = vec![];
     let mut last_updated = Instant::now();
     let mut buffer = [0u8; NETCODE_MAX_PACKET_BYTES];
     let mut usernames: HashMap<u64, String> = HashMap::new();
+    let mut players: HashMap<u64, Player> = HashMap::new();
     let mut last_ping = Instant::now();
     loop {
         server.update(Instant::now() - last_updated);
-        received_messages.clear();
+        messages_to_deliver.clear();
 
         loop {
             match udp_socket.recv_from(&mut buffer) {
@@ -72,8 +76,9 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
                     handle_server_result(
                         server_result,
                         &udp_socket,
-                        &mut received_messages,
+                        &mut messages_to_deliver,
                         &mut usernames,
+                        &mut players,
                     );
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
@@ -81,12 +86,24 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
             };
         }
 
-        for text in received_messages.iter() {
-            for client_id in server.clients_id().iter() {
-                let (addr, payload) = server
-                    .generate_payload_packet(*client_id, text.as_bytes())
-                    .unwrap();
-                udp_socket.send_to(payload, addr).unwrap();
+        for (destination, message) in messages_to_deliver.iter() {
+            for client_id in server.clients_id().iter().filter(|cid| {
+                match destination {
+                    Destination::All => true,
+                    Destination::Player(id) => id == *cid,
+                    //Destination::NotPlayer(id) => id != *cid,
+                }
+            }) {
+                match message.get_buf() {
+                    Ok(buf) => {
+                        let (addr, payload) =
+                            server.generate_payload_packet(*client_id, &buf).unwrap();
+                        udp_socket.send_to(payload, addr).unwrap();
+                    }
+                    Err(e) => {
+                        eprintln!("Error buffering MultiplayerMessage: {}", e);
+                    }
+                };
             }
         }
 
@@ -98,8 +115,9 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
                 handle_server_result(
                     server_result,
                     &udp_socket,
-                    &mut received_messages,
+                    &mut messages_to_deliver,
                     &mut usernames,
+                    &mut players,
                 );
             }
         }
@@ -112,19 +130,28 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
 fn handle_server_result(
     server_result: ServerResult,
     socket: &UdpSocket,
-    received_messages: &mut Vec<String>,
+    messages_to_deliver: &mut Vec<(Destination, MultiplayerMessage)>,
     usernames: &mut HashMap<u64, String>,
+    players: &mut HashMap<u64, Player>,
 ) {
     match server_result {
         ServerResult::Payload { client_id, payload } => {
-            let text = String::from_utf8(payload.to_vec()).unwrap();
-            let username = usernames.get(&client_id).unwrap();
-            println!(
-                "Client {} ({}) sent message {:?}.",
-                username, client_id, text
-            );
-            let text = format!("{}: {}", username, text);
-            received_messages.push(text);
+            //let text = String::from_utf8(payload.to_vec()).unwrap();
+            let multiplayer_message = MultiplayerMessage::get(payload);
+            match multiplayer_message {
+                Ok(mess) => {
+                    let id = mess.get_id();
+                    //let username = usernames.get(&client_id).unwrap();
+                    let username: &str = players.get(&client_id).unwrap().name.as_ref();
+                    //println!( "Client {} ({}) sent message {:?}.", username, client_id, text);
+                    println!("Client {} ({}) sent message {:?}.", username, client_id, id);
+                }
+                _ => {
+                    println!("multiplayer message error??")
+                }
+            };
+            //let text = format!("{}: {}", username, text);
+            //messages_to_deliver.push(text);
         }
         ServerResult::PacketToSend { payload, addr } => {
             socket.send_to(payload, addr).unwrap();
@@ -137,8 +164,14 @@ fn handle_server_result(
         } => {
             let username = Username::from_user_data(&user_data);
             println!("Client {} with id {} connected.", username.0, client_id);
-            usernames.insert(client_id, username.0);
+            //Store references to new player.
+            usernames.insert(client_id, username.0.clone());
+            let player: Player = initialise_new_player(players, username.0);
+            players.insert(client_id, player);
+            //Acknowledge ClientConnected message.
             socket.send_to(payload, addr).unwrap();
+            //Send connect messages to the existing players and the new player.
+            push_new_client_messages(client_id, messages_to_deliver, players);
         }
         ServerResult::ClientDisconnected {
             client_id,
@@ -147,10 +180,122 @@ fn handle_server_result(
         } => {
             println!("Client {} disconnected.", client_id);
             usernames.remove_entry(&client_id);
+            players.remove_entry(&client_id);
+            //Acknowledge disconnect.
             if let Some(payload) = payload {
                 socket.send_to(payload, addr).unwrap();
             }
+            push_disconnect_client_messages(client_id, messages_to_deliver);
         }
         ServerResult::None => {}
     }
+}
+
+fn push_disconnect_client_messages(
+    disconnect_client_id: u64,
+    messages_to_deliver: &mut Vec<(Destination, MultiplayerMessage)>,
+) {
+    let msg = MultiplayerMessage::Disconnect {
+        client_id: disconnect_client_id,
+    };
+    messages_to_deliver.push((Destination::All, msg));
+}
+
+fn push_new_client_messages(
+    new_client_id: u64,
+    messages_to_deliver: &mut Vec<(Destination, MultiplayerMessage)>,
+    players: &mut HashMap<u64, Player>,
+) {
+    let new_player: &Player = players.get(&new_client_id).unwrap();
+    let msg = MultiplayerMessage::Connect {
+        client_id: new_client_id,
+        pos: new_player.pos,
+        direction: new_player.direction,
+        name: new_player.name.clone(),
+    };
+
+    //Send the new player connect to itself and all existing players.
+    messages_to_deliver.push((Destination::All, msg));
+
+    //Send Multiplayer::Connect to new client for all existing players.
+    for (c_id, player) in players.iter() {
+        if *c_id != new_client_id {
+            //get the details of an existing player
+            let existing_player_msg = MultiplayerMessage::Connect {
+                client_id: *c_id,
+                pos: player.pos,
+                direction: player.direction,
+                name: player.name.clone(),
+            };
+            //send the message to the new player.
+            messages_to_deliver.push((Destination::Player(new_client_id), existing_player_msg));
+            println!("send message for existing player:{}", player.name);
+        }
+    }
+}
+
+//Calculate the spawn point for the new player.
+fn initialise_new_player(players: &mut HashMap<u64, Player>, name: String) -> Player {
+    let mut num = get_player_num(players) as f32;
+    num = num + 1.0;
+    Player {
+        pos: Vec3::new(num * 4., 4., 0.),
+        direction: Vec3::new(0., 0., 0.),
+        name,
+        num: num as u8,
+    }
+}
+
+//Used to calculate the spawn point.
+fn get_player_num(players: &HashMap<u64, Player>) -> u8 {
+    players.iter().fold(0, |max_num, player| {
+        if player.1.num > max_num {
+            player.1.num
+        } else {
+            max_num
+        }
+    })
+}
+
+struct Player {
+    pos: Vec3,
+    direction: Vec3,
+    name: String,
+    //used to calculate the starting point of littleman.
+    num: u8,
+}
+
+enum Destination {
+    Player(u64),
+    //NotPlayer(u64),
+    All,
+}
+
+#[test]
+fn test_get_player_num() {
+    let mut players: HashMap<u64, Player> = HashMap::new();
+    assert_eq!(0, get_player_num(&players));
+    let player = Player {
+        pos: Vec3::new(0., 0., 0.),
+        direction: Vec3::new(0., 0., 0.),
+        name: "shrubbo".to_string(),
+        num: 0,
+    };
+    players.insert(111, player);
+    let player = Player {
+        pos: Vec3::new(0., 0., 0.),
+        direction: Vec3::new(0., 0., 0.),
+        name: "shrubbo1".to_string(),
+        num: 5,
+    };
+    players.insert(222, player);
+    assert_eq!(5, get_player_num(&players));
+    let player = Player {
+        pos: Vec3::new(0., 0., 0.),
+        direction: Vec3::new(0., 0., 0.),
+        name: "shrubbo".to_string(),
+        num: 6,
+    };
+    players.insert(311, player);
+    assert_eq!(6, get_player_num(&players));
 }

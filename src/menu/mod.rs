@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui::menu, EguiContexts};
+use bevy_egui::{egui::menu, EguiContexts, EguiSet, EguiStartupSet};
 use egui::containers::panel::TopBottomPanel;
 use egui::pos2;
 use regex::Regex;
@@ -14,19 +14,18 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_menu);
-        app.add_systems(Update, spawn_main_menu.run_if(in_state(AppState::MainMenu)));
         app.add_systems(
             Update,
-            spawn_config_window.run_if(in_state(MenuItem::Config)),
+            (
+                spawn_main_menu.run_if(in_state(AppState::MainMenu)),
+                spawn_config_window.run_if(in_state(MenuItem::Config)),
+                spawn_player_window.run_if(in_state(MenuItem::Players)),
+                spawn_server_window.run_if(in_state(MenuItem::Servers)),
+            )
+                .after(EguiStartupSet::InitContexts)
+                .after(EguiSet::InitContexts),
         );
-        app.add_systems(
-            Update,
-            spawn_player_window.run_if(in_state(MenuItem::Players)),
-        );
-        app.add_systems(
-            Update,
-            spawn_server_window.run_if(in_state(MenuItem::Servers)),
-        );
+
         app.add_systems(
             OnEnter(MenuItem::Config),
             setup_config_window_params.before(initialise_config_window_params),
@@ -244,7 +243,6 @@ pub fn setup_menu(mut commands: Commands, mut contexts: EguiContexts) {
     let con = contexts.ctx_mut();
     con.set_theme(egui::Theme::Light);
     commands.insert_resource(DevParam { on: false });
-    //commands.insert_resource(RenetClient::new());
 }
 
 pub fn setup_config_window_params(mut commands: Commands, app_params: Res<AppParams>) {

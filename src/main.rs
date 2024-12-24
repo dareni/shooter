@@ -3,6 +3,7 @@ use bevy::pbr::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use bevy::render::camera::Viewport;
 use bevy::render::mesh::VertexAttributeValues;
+use bevy_egui::EguiPlugin;
 use std::f32::consts::PI;
 
 use crate::client::ClientPlugin;
@@ -28,11 +29,17 @@ fn main() {
                 server_main();
                 return;
             }
+            "--help" => {
+                println!("--config [alternate filename]");
+                return;
+            }
+
             _ => {}
         }
     }
     let mut app: App = App::new();
     app.add_plugins(DefaultPlugins);
+    app.add_plugins(EguiPlugin);
     app.add_plugins(InputNStatePlugin);
     app.add_plugins(MenuPlugin);
     app.add_plugins(ClientPlugin);
@@ -116,12 +123,17 @@ fn setup(
     commands.spawn((
         Transform::from_xyz(-2.0, 4.0, 0.0),
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman.glb"))),
-        LittleMan {},
+        FirstPerson {},
     ));
 }
 
 #[derive(Component)]
-pub struct LittleMan {}
+pub struct FirstPerson {}
+
+#[derive(Component)]
+pub struct ClientId {
+    id: u64,
+}
 
 fn move_cube(
     mut player_query: Query<&mut Transform, With<Cube>>,
