@@ -140,19 +140,19 @@ fn move_cube(
     mut char_input_events: EventReader<KeyboardInput>,
 ) {
     let mut offset = Vec3::ZERO;
-    for event in char_input_events.read() {
-        if event.state.is_pressed() {
-            match event.key_code {
-                KeyCode::KeyW => offset.z += 0.1,
-                KeyCode::KeyS => offset.z -= 0.1,
-                KeyCode::KeyA => offset.x -= 0.1,
-                KeyCode::KeyD => offset.x += 0.1,
-                KeyCode::KeyQ => offset.y += 0.1,
-                KeyCode::KeyE => offset.y -= 0.1,
-                _ => {}
-            }
-        }
-    }
+   // for event in char_input_events.read() {
+   //     if event.state.is_pressed() {
+   //         match event.key_code {
+   //             KeyCode::KeyW => offset.z += 0.1,
+   //             KeyCode::KeyS => offset.z -= 0.1,
+   //             KeyCode::KeyA => offset.x -= 0.1,
+   //             KeyCode::KeyD => offset.x += 0.1,
+   //             KeyCode::KeyQ => offset.y += 0.1,
+   //             KeyCode::KeyE => offset.y -= 0.1,
+   //             _ => {}
+   //         }
+   //     }
+   // }
     // Don't bother running the rest of the function if there's no offset
     if offset == Vec3::ZERO {
         return;

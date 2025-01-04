@@ -1,4 +1,7 @@
+#To avoid adding local changes to project.txt:
+#   git update-index --assume-unchanged project.txt
+#To allow commit of project.txt changes:
+#   git update-index --no-assume-unchanged project.txt
 target
 rusty-tags.vi
 start.vim
-project.txt

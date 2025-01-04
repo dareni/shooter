@@ -4548,6 +4548,7 @@ dependencies = [
  "bevy 0.15.0",
  "bevy-inspector-egui",
  "bevy_egui",
+ "bevy_input 0.15.0",
  "bevy_renet",
  "dirs",
  "egui",

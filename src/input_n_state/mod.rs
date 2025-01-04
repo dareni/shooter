@@ -1,6 +1,9 @@
 use crate::config::do_read_config;
 use crate::config::get_file;
+use crate::KeyboardInput;
+use crate::players::*;
 use bevy::prelude::*;
+use bevy_input::ButtonState;
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_inspector_egui::quick::StateInspectorPlugin;
@@ -106,12 +109,7 @@ impl Plugin for InputNStatePlugin {
         app.register_type::<AppState>();
         app.add_sub_state::<MenuItem>();
         app.add_systems(Startup, initialise_app);
-        app.add_systems(
-            Update,
-            game_keys
-                .run_if(in_state(AppState::Game))
-                .run_if(resource_changed::<ButtonInput<KeyCode>>),
-        );
+        app.add_systems(Update, keyboard_event_system.run_if(in_state(AppState::Game)));
         app.add_systems(OnEnter(AppState::GameOver), app_exit);
         app.add_plugins(WorldInspectorPlugin::default().run_if(do_world_inspector()));
         app.add_plugins(
@@ -185,25 +183,33 @@ fn initialise_app(
     commands.insert_resource(params);
 }
 
-fn game_keys(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
+fn keyboard_event_system(
+    mut keyboard_input_events: EventReader<KeyboardInput>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut player_movement: EventWriter<PlayerMovementEvent>,
 ) {
-    if keyboard_input.just_pressed(KeyCode::Escape) || keyboard_input.just_pressed(KeyCode::KeyX) {
-        next_state.set(AppState::GameOver);
-    } else if keyboard_input.just_pressed(KeyCode::KeyM) {
-        next_state.set(AppState::MainMenu);
-    } else if keyboard_input.just_pressed(KeyCode::KeyG) {
-        next_state.set(AppState::Game);
+    for event in keyboard_input_events.read() {
+        match event {
+            KeyboardInput {
+                key_code,
+                logical_key: _,
+                state: ButtonState::Pressed,
+                repeat: _,
+                window: _,
+            } => match key_code {
+                KeyCode::KeyA => {player_movement.send(PlayerMovementEvent(Movement::Left));}
+                KeyCode::KeyD => {player_movement.send(PlayerMovementEvent(Movement::Right));}
+                KeyCode::KeyW => {player_movement.send(PlayerMovementEvent(Movement::Forward));}
+                KeyCode::KeyS => {player_movement.send(PlayerMovementEvent(Movement::Back));}
+                KeyCode::Escape | KeyCode::KeyX => next_state.set(AppState::GameOver),
+                KeyCode::KeyM => next_state.set(AppState::MainMenu),
+                KeyCode::KeyG => next_state.set(AppState::Game),
+                _ => {}
+            },
+            _ => {}
+        }
+        //println!("{:?}", event);
     }
-
-    // Add for loop
-    //for key in keys.get_pressed() {
-    //    println!("{:?} is currently held down", key);
-    //}
-    //for key in keys.get_just_pressed() {
-    //    println!("{:?} was pressed", key);
-    //}
 }
 
 fn app_exit(mut app_exit_event_writer: EventWriter<AppExit>) {

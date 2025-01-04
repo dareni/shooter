@@ -1,19 +1,61 @@
+use bevy::prelude::*;
 use crate::client::*;
 use crate::input_n_state::*;
 use crate::*;
-use bevy::prelude::*;
+
+#[derive(Event)]
+pub struct PlayerMovementEvent(pub Movement);
+
+#[derive(Debug)]
+pub enum Movement {
+    Forward,
+    Back,
+    Left,
+    Right,
+}
 
 pub struct PlayersPlugin;
 impl Plugin for PlayersPlugin {
     fn build(&self, app: &mut App) {
+        app.add_event::<PlayerMovementEvent>();
         app.add_systems(
             Update,
             update_world_from_server_messages.run_if(resource_exists::<MultiplayerMessageReceiver>),
         );
+        app.add_systems(Update, keyboard_move_cmd);
         app.add_systems(
             OnEnter(MultiplayerState::Connected),
             connect_first_person.run_if(resource_exists::<MultiplayerMessageReceiver>),
         );
+    }
+}
+
+fn keyboard_move_cmd(mut player_movement: EventReader<PlayerMovementEvent>,
+    mut camera: Query<&mut Transform, With<Camera>>) {
+    let mut transform = camera.get_single_mut().unwrap();
+
+    for mv in player_movement.read() {
+        println!("{:?}", mv.0);
+        match mv {
+            PlayerMovementEvent(Movement::Forward) => {
+                let forward:Dir3 = transform.forward();
+                transform.translation += *forward;
+            }
+            PlayerMovementEvent(Movement::Back) => {
+                let back:Dir3 = transform.back();
+                //transform.rotate
+                transform.translation += *back;
+            }
+            PlayerMovementEvent(Movement::Left) => {
+                let left:Dir3 = transform.left();
+                transform.translation += *left;
+            }
+            PlayerMovementEvent(Movement::Right) => {
+                let right:Dir3 = transform.right();
+                transform.translation += *right;
+            }
+            //_  => {}
+        }
     }
 }
 
@@ -45,7 +87,7 @@ pub fn update_world_from_server_messages(
             MultiplayerMessage::Connect {
                 client_id,
                 pos,
-                direction,
+                direction: _,
                 name,
             } => {
                 let mut is_spawned = false;

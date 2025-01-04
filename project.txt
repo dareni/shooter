@@ -7,7 +7,7 @@ shooter=<set path here> {
  start.vim
  notes.txt
  in.vim
- src=./src {
+ src=src {
   main.rs
   input_n_state=input_n_state {
    mod.rs
@@ -34,3 +34,8 @@ shooter=<set path here> {
 }
 
 #note: start with vi -U start.vim
+
+#To avoid adding local changes to project:
+#   git update-index --assume-unchanged project.txt
+#To allow commit of project.txt changes:
+#   git update-index --no-assume-unchanged project.txt
