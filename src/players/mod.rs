@@ -6,6 +6,12 @@ use crate::*;
 #[derive(Event)]
 pub struct PlayerMovementEvent(pub Movement);
 
+#[derive(Event)]
+pub struct PlayerRotateEvent(pub Vec2);
+
+#[derive(serde::Deserialize, serde::Serialize, Resource)]
+pub struct MouseRotation(pub Vec2);
+
 #[derive(Debug)]
 pub enum Movement {
     Forward,
@@ -14,19 +20,48 @@ pub enum Movement {
     Right,
 }
 
+const MOUSE_SENSITIVITY:f32 = 0.001;
+
 pub struct PlayersPlugin;
 impl Plugin for PlayersPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<PlayerMovementEvent>();
+        app.add_event::<PlayerRotateEvent>();
+        app.insert_resource(MouseRotation(Vec2::ZERO));
         app.add_systems(
             Update,
             update_world_from_server_messages.run_if(resource_exists::<MultiplayerMessageReceiver>),
         );
         app.add_systems(Update, keyboard_move_cmd);
+        app.add_systems(Update, mouse_move_cmd);
         app.add_systems(
             OnEnter(MultiplayerState::Connected),
             connect_first_person.run_if(resource_exists::<MultiplayerMessageReceiver>),
         );
+    }
+}
+
+fn mouse_move_cmd(mut player_rotate: EventReader<PlayerRotateEvent>,
+    mut mouse_rotation : ResMut<MouseRotation>,
+    mut camera: Query<&mut Transform, With<Camera>>) {
+    let mut transform = camera.get_single_mut().unwrap();
+    for rotation in player_rotate.read() {
+        let PlayerRotateEvent(delta) = rotation;
+
+        mouse_rotation.0.x -= delta.x*MOUSE_SENSITIVITY;
+        mouse_rotation.0.y -= delta.y*MOUSE_SENSITIVITY;
+
+        let x_quat = Quat::from_axis_angle(
+                Vec3::new(0., 1., 0.),
+                mouse_rotation.0.x,
+            );
+
+            let y_quat = Quat::from_axis_angle(
+                Vec3::new(1., 0., 0.),
+                mouse_rotation.0.y,
+            );
+
+            transform.rotation = x_quat * y_quat;
     }
 }
 

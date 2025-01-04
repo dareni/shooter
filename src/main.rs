@@ -7,7 +7,7 @@ use bevy_egui::EguiPlugin;
 use std::f32::consts::PI;
 
 use crate::client::ClientPlugin;
-use crate::input_n_state::InputNStatePlugin;
+use crate::input_n_state::{InputNStatePlugin, AppParams, initialise_app};
 use crate::menu::MenuPlugin;
 use crate::players::PlayersPlugin;
 use crate::server::server_main;
@@ -44,7 +44,7 @@ fn main() {
     app.add_plugins(MenuPlugin);
     app.add_plugins(ClientPlugin);
     app.add_plugins(PlayersPlugin);
-    app.add_systems(Startup, setup);
+    app.add_systems(Startup, setup.after(initialise_app));
     app.add_systems(Update, (move_cube, rotate_on_timer));
     app.run();
 }
@@ -56,6 +56,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    app_params: Res<AppParams>,
     asset_server: Res<AssetServer>,
 ) {
     // plane
@@ -111,7 +112,10 @@ fn setup(
         Camera {
             order: 1,
             viewport: Some(Viewport {
-                physical_size: UVec2 { x: 200, y: 200 },
+                physical_size: UVec2 {
+                    x: app_params.window_size.x as u32,
+                    y: app_params.window_size.y as u32
+                },
                 physical_position: UVec2 { x: 000, y: 000 },
                 ..default()
             }),
@@ -137,9 +141,9 @@ pub struct ClientId {
 
 fn move_cube(
     mut player_query: Query<&mut Transform, With<Cube>>,
-    mut char_input_events: EventReader<KeyboardInput>,
+    _char_input_events: EventReader<KeyboardInput>,
 ) {
-    let mut offset = Vec3::ZERO;
+    let offset = Vec3::ZERO;
    // for event in char_input_events.read() {
    //     if event.state.is_pressed() {
    //         match event.key_code {

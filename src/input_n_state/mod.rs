@@ -3,7 +3,7 @@ use crate::config::get_file;
 use crate::KeyboardInput;
 use crate::players::*;
 use bevy::prelude::*;
-use bevy_input::ButtonState;
+use bevy_input::{ButtonState, mouse::AccumulatedMouseMotion};
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_inspector_egui::quick::StateInspectorPlugin;
@@ -110,6 +110,7 @@ impl Plugin for InputNStatePlugin {
         app.add_sub_state::<MenuItem>();
         app.add_systems(Startup, initialise_app);
         app.add_systems(Update, keyboard_event_system.run_if(in_state(AppState::Game)));
+        app.add_systems(Update, mouse_event_system.run_if(in_state(AppState::Game)));
         app.add_systems(OnEnter(AppState::GameOver), app_exit);
         app.add_plugins(WorldInspectorPlugin::default().run_if(do_world_inspector()));
         app.add_plugins(
@@ -123,7 +124,7 @@ impl Plugin for InputNStatePlugin {
     }
 }
 
-fn initialise_app(
+pub fn initialise_app(
     mut commands: Commands,
     mut windows: Query<&mut Window>,
     mut next_item: ResMut<NextState<MenuItem>>,
@@ -211,6 +212,18 @@ fn keyboard_event_system(
         //println!("{:?}", event);
     }
 }
+
+fn mouse_event_system(
+    accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
+    mut player_rotate: EventWriter<PlayerRotateEvent>,
+) {
+    if accumulated_mouse_motion.delta != Vec2::ZERO {
+        player_rotate.send(PlayerRotateEvent(accumulated_mouse_motion.delta));
+        println!("received mouse motion:{:?}", accumulated_mouse_motion.delta);
+    }
+}
+
+
 
 fn app_exit(mut app_exit_event_writer: EventWriter<AppExit>) {
     app_exit_event_writer.send(AppExit::Success);
