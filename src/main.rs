@@ -7,7 +7,7 @@ use bevy_egui::EguiPlugin;
 use std::f32::consts::PI;
 
 use crate::client::ClientPlugin;
-use crate::input_n_state::{InputNStatePlugin, AppParams, initialise_app};
+use crate::input_n_state::{initialise_app, AppParams, InputNStatePlugin};
 use crate::menu::MenuPlugin;
 use crate::players::PlayersPlugin;
 use crate::server::server_main;
@@ -44,7 +44,7 @@ fn main() {
     app.add_plugins(MenuPlugin);
     app.add_plugins(ClientPlugin);
     app.add_plugins(PlayersPlugin);
-    app.add_systems(Startup, setup.after(initialise_app));
+    app.add_systems(Startup, setup);
     app.add_systems(Update, (move_cube, rotate_on_timer));
     app.run();
 }
@@ -114,7 +114,7 @@ fn setup(
             viewport: Some(Viewport {
                 physical_size: UVec2 {
                     x: app_params.window_size.x as u32,
-                    y: app_params.window_size.y as u32
+                    y: app_params.window_size.y as u32,
                 },
                 physical_position: UVec2 { x: 000, y: 000 },
                 ..default()
@@ -144,19 +144,19 @@ fn move_cube(
     _char_input_events: EventReader<KeyboardInput>,
 ) {
     let offset = Vec3::ZERO;
-   // for event in char_input_events.read() {
-   //     if event.state.is_pressed() {
-   //         match event.key_code {
-   //             KeyCode::KeyW => offset.z += 0.1,
-   //             KeyCode::KeyS => offset.z -= 0.1,
-   //             KeyCode::KeyA => offset.x -= 0.1,
-   //             KeyCode::KeyD => offset.x += 0.1,
-   //             KeyCode::KeyQ => offset.y += 0.1,
-   //             KeyCode::KeyE => offset.y -= 0.1,
-   //             _ => {}
-   //         }
-   //     }
-   // }
+    // for event in char_input_events.read() {
+    //     if event.state.is_pressed() {
+    //         match event.key_code {
+    //             KeyCode::KeyW => offset.z += 0.1,
+    //             KeyCode::KeyS => offset.z -= 0.1,
+    //             KeyCode::KeyA => offset.x -= 0.1,
+    //             KeyCode::KeyD => offset.x += 0.1,
+    //             KeyCode::KeyQ => offset.y += 0.1,
+    //             KeyCode::KeyE => offset.y -= 0.1,
+    //             _ => {}
+    //         }
+    //     }
+    // }
     // Don't bother running the rest of the function if there's no offset
     if offset == Vec3::ZERO {
         return;

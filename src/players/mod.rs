@@ -1,7 +1,7 @@
-use bevy::prelude::*;
 use crate::client::*;
 use crate::input_n_state::*;
 use crate::*;
+use bevy::prelude::*;
 
 #[derive(Event)]
 pub struct PlayerMovementEvent(pub Movement);
@@ -20,7 +20,7 @@ pub enum Movement {
     Right,
 }
 
-const MOUSE_SENSITIVITY:f32 = 0.001;
+const MOUSE_SENSITIVITY: f32 = 0.001;
 
 pub struct PlayersPlugin;
 impl Plugin for PlayersPlugin {
@@ -41,55 +41,52 @@ impl Plugin for PlayersPlugin {
     }
 }
 
-fn mouse_move_cmd(mut player_rotate: EventReader<PlayerRotateEvent>,
-    mut mouse_rotation : ResMut<MouseRotation>,
-    mut camera: Query<&mut Transform, With<Camera>>) {
+fn mouse_move_cmd(
+    mut player_rotate: EventReader<PlayerRotateEvent>,
+    mut mouse_rotation: ResMut<MouseRotation>,
+    mut camera: Query<&mut Transform, With<Camera>>,
+) {
     let mut transform = camera.get_single_mut().unwrap();
     for rotation in player_rotate.read() {
         let PlayerRotateEvent(delta) = rotation;
 
-        mouse_rotation.0.x -= delta.x*MOUSE_SENSITIVITY;
-        mouse_rotation.0.y -= delta.y*MOUSE_SENSITIVITY;
+        mouse_rotation.0.x -= delta.x * MOUSE_SENSITIVITY;
+        mouse_rotation.0.y -= delta.y * MOUSE_SENSITIVITY;
 
-        let x_quat = Quat::from_axis_angle(
-                Vec3::new(0., 1., 0.),
-                mouse_rotation.0.x,
-            );
+        let x_quat = Quat::from_axis_angle(Vec3::new(0., 1., 0.), mouse_rotation.0.x);
 
-            let y_quat = Quat::from_axis_angle(
-                Vec3::new(1., 0., 0.),
-                mouse_rotation.0.y,
-            );
+        let y_quat = Quat::from_axis_angle(Vec3::new(1., 0., 0.), mouse_rotation.0.y);
 
-            transform.rotation = x_quat * y_quat;
+        transform.rotation = x_quat * y_quat;
     }
 }
 
-fn keyboard_move_cmd(mut player_movement: EventReader<PlayerMovementEvent>,
-    mut camera: Query<&mut Transform, With<Camera>>) {
+fn keyboard_move_cmd(
+    mut player_movement: EventReader<PlayerMovementEvent>,
+    mut camera: Query<&mut Transform, With<Camera>>,
+) {
     let mut transform = camera.get_single_mut().unwrap();
 
     for mv in player_movement.read() {
         println!("{:?}", mv.0);
         match mv {
             PlayerMovementEvent(Movement::Forward) => {
-                let forward:Dir3 = transform.forward();
+                let forward: Dir3 = transform.forward();
                 transform.translation += *forward;
             }
             PlayerMovementEvent(Movement::Back) => {
-                let back:Dir3 = transform.back();
+                let back: Dir3 = transform.back();
                 //transform.rotate
                 transform.translation += *back;
             }
             PlayerMovementEvent(Movement::Left) => {
-                let left:Dir3 = transform.left();
+                let left: Dir3 = transform.left();
                 transform.translation += *left;
             }
             PlayerMovementEvent(Movement::Right) => {
-                let right:Dir3 = transform.right();
+                let right: Dir3 = transform.right();
                 transform.translation += *right;
-            }
-            //_  => {}
+            } //_  => {}
         }
     }
 }

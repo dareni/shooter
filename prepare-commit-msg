@@ -1,0 +1,16 @@
+#!/bin/sh
+#Link this file to .git/hooks/prepare-commit-msg
+# ln -sr ./prepare-commit-msg ./.git/hooks
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+SHA1=$3
+
+F_OP=`cargo fmt --check |head`
+
+if [ -n "$F_OP" ]; then
+  echo "\n"
+  echo Please format the source:
+  echo "\n"
+  cargo fmt --check
+fi

@@ -1,9 +1,9 @@
 use crate::config::do_read_config;
 use crate::config::get_file;
-use crate::KeyboardInput;
 use crate::players::*;
+use crate::KeyboardInput;
 use bevy::prelude::*;
-use bevy_input::{ButtonState, mouse::AccumulatedMouseMotion};
+use bevy_input::{mouse::AccumulatedMouseMotion, ButtonState};
 use bevy_inspector_egui::prelude::*;
 use bevy_inspector_egui::quick::ResourceInspectorPlugin;
 use bevy_inspector_egui::quick::StateInspectorPlugin;
@@ -108,8 +108,11 @@ impl Plugin for InputNStatePlugin {
         app.register_type::<MultiplayerState>();
         app.register_type::<AppState>();
         app.add_sub_state::<MenuItem>();
-        app.add_systems(Startup, initialise_app);
-        app.add_systems(Update, keyboard_event_system.run_if(in_state(AppState::Game)));
+        app.add_systems(PreStartup, initialise_app);
+        app.add_systems(
+            Update,
+            keyboard_event_system.run_if(in_state(AppState::Game)),
+        );
         app.add_systems(Update, mouse_event_system.run_if(in_state(AppState::Game)));
         app.add_systems(OnEnter(AppState::GameOver), app_exit);
         app.add_plugins(WorldInspectorPlugin::default().run_if(do_world_inspector()));
@@ -198,10 +201,18 @@ fn keyboard_event_system(
                 repeat: _,
                 window: _,
             } => match key_code {
-                KeyCode::KeyA => {player_movement.send(PlayerMovementEvent(Movement::Left));}
-                KeyCode::KeyD => {player_movement.send(PlayerMovementEvent(Movement::Right));}
-                KeyCode::KeyW => {player_movement.send(PlayerMovementEvent(Movement::Forward));}
-                KeyCode::KeyS => {player_movement.send(PlayerMovementEvent(Movement::Back));}
+                KeyCode::KeyA => {
+                    player_movement.send(PlayerMovementEvent(Movement::Left));
+                }
+                KeyCode::KeyD => {
+                    player_movement.send(PlayerMovementEvent(Movement::Right));
+                }
+                KeyCode::KeyW => {
+                    player_movement.send(PlayerMovementEvent(Movement::Forward));
+                }
+                KeyCode::KeyS => {
+                    player_movement.send(PlayerMovementEvent(Movement::Back));
+                }
                 KeyCode::Escape | KeyCode::KeyX => next_state.set(AppState::GameOver),
                 KeyCode::KeyM => next_state.set(AppState::MainMenu),
                 KeyCode::KeyG => next_state.set(AppState::Game),
@@ -219,11 +230,8 @@ fn mouse_event_system(
 ) {
     if accumulated_mouse_motion.delta != Vec2::ZERO {
         player_rotate.send(PlayerRotateEvent(accumulated_mouse_motion.delta));
-        println!("received mouse motion:{:?}", accumulated_mouse_motion.delta);
     }
 }
-
-
 
 fn app_exit(mut app_exit_event_writer: EventWriter<AppExit>) {
     app_exit_event_writer.send(AppExit::Success);
