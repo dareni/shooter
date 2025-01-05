@@ -1,9 +1,11 @@
 use bevy::prelude::*;
+use bevy::winit::{UpdateMode, WinitSettings};
 use bevy_egui::{egui::menu, EguiContexts, EguiSet, EguiStartupSet};
 use egui::containers::panel::TopBottomPanel;
 use egui::pos2;
 use regex::Regex;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::client::*;
 use crate::config::*;
@@ -14,6 +16,7 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_menu);
+        app.add_systems(Startup, low_fps);
         app.add_systems(
             Update,
             (
@@ -25,6 +28,9 @@ impl Plugin for MenuPlugin {
                 .after(EguiStartupSet::InitContexts)
                 .after(EguiSet::InitContexts),
         );
+
+        app.add_systems(OnEnter(AppState::Game), high_fps);
+        app.add_systems(OnExit(AppState::Game), low_fps);
 
         app.add_systems(
             OnEnter(MenuItem::Config),
@@ -258,6 +264,16 @@ pub fn initialise_config_window_params(
 
 pub fn finalise_config_window_params(mut commands: Commands) {
     commands.remove_resource::<AppParamsInput>();
+}
+
+fn high_fps(mut winit: ResMut<WinitSettings>) {
+    winit.focused_mode = UpdateMode::reactive(Duration::from_secs_f32(1.0 / 60.0));
+    winit.unfocused_mode = UpdateMode::reactive(Duration::from_secs_f32(1.0 / 1.0));
+}
+
+fn low_fps(mut winit: ResMut<WinitSettings>) {
+    winit.focused_mode = UpdateMode::reactive(Duration::from_secs_f32(1.0 / 1.0));
+    winit.unfocused_mode = UpdateMode::reactive(Duration::from_secs_f32(1.0 / 1.0));
 }
 
 #[test]
