@@ -10,6 +10,7 @@ use std::time::Duration;
 use crate::client::*;
 use crate::config::*;
 use crate::input_n_state::*;
+use crate::ActiveCamera;
 
 pub struct MenuPlugin;
 
@@ -31,6 +32,7 @@ impl Plugin for MenuPlugin {
 
         app.add_systems(OnEnter(AppState::Game), high_fps);
         app.add_systems(OnExit(AppState::Game), low_fps);
+        app.add_systems(OnEnter(MenuItem::ActivateCamera), activate_camera);
 
         app.add_systems(
             OnEnter(MenuItem::Config),
@@ -80,6 +82,10 @@ pub fn spawn_main_menu(
             let _file_button = ui.menu_button("Options", |ui| {
                 if ui.button("Dev").clicked() {
                     is_w_inspect.on = !is_w_inspect.on;
+                    ui.close_menu();
+                }
+                if ui.button("Toggle Camera").clicked() {
+                    next_item.set(MenuItem::ActivateCamera);
                     ui.close_menu();
                 }
             });
@@ -241,6 +247,26 @@ pub fn spawn_player_window(
                 }
             } else {
                 println!("Configuration of 'Player Name' required before connecting.");
+            }
+        });
+}
+
+pub fn activate_camera(
+    mut next_menu_item: ResMut<NextState<MenuItem>>,
+    mut cameras: Query<(Entity, &mut Camera, Option<&ActiveCamera>)>,
+    mut commands: Commands,
+) {
+    next_menu_item.set(MenuItem::None);
+    cameras
+        .iter_mut()
+        .for_each(|(entityid, mut camera, activecamera)| match activecamera {
+            Some(_) => {
+                camera.is_active = false;
+                commands.entity(entityid).remove::<ActiveCamera>();
+            }
+            None => {
+                camera.is_active = true;
+                commands.entity(entityid).insert(ActiveCamera {});
             }
         });
 }

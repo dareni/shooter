@@ -44,7 +44,7 @@ impl Plugin for PlayersPlugin {
 fn mouse_move_cmd(
     mut player_rotate: EventReader<PlayerRotateEvent>,
     mut mouse_rotation: ResMut<MouseRotation>,
-    mut camera: Query<&mut Transform, With<Camera>>,
+    mut camera: Query<&mut Transform, With<ActiveCamera>>,
 ) {
     let mut transform = camera.get_single_mut().unwrap();
     for rotation in player_rotate.read() {
@@ -63,7 +63,7 @@ fn mouse_move_cmd(
 
 fn keyboard_move_cmd(
     mut player_movement: EventReader<PlayerMovementEvent>,
-    mut camera: Query<&mut Transform, With<Camera>>,
+    mut camera: Query<&mut Transform, With<ActiveCamera>>,
 ) {
     let mut transform = camera.get_single_mut().unwrap();
 

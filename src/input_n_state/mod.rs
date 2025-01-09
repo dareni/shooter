@@ -97,6 +97,7 @@ pub enum MenuItem {
     #[default]
     Servers,
     Players,
+    ActivateCamera,
     None,
 }
 

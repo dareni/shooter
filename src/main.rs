@@ -7,7 +7,7 @@ use bevy_egui::EguiPlugin;
 use std::f32::consts::PI;
 
 use crate::client::ClientPlugin;
-use crate::input_n_state::{initialise_app, AppParams, InputNStatePlugin};
+use crate::input_n_state::{AppParams, InputNStatePlugin};
 use crate::menu::MenuPlugin;
 use crate::players::PlayersPlugin;
 use crate::server::server_main;
@@ -122,17 +122,35 @@ fn setup(
             ..default()
         },
         Transform::from_xyz(50.0, 15.0, 30.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ActiveCamera {},
     ));
 
     commands.spawn((
+        Camera3d::default(),
+        Camera {
+            order: 1,
+            viewport: Some(Viewport {
+                physical_size: UVec2 {
+                    x: app_params.window_size.x as u32,
+                    y: app_params.window_size.y as u32,
+                },
+                physical_position: UVec2 { x: 000, y: 000 },
+                ..default()
+            }),
+            is_active: false,
+            ..default()
+        },
+        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman1.glb"))),
         Transform::from_xyz(-2.0, 4.0, 0.0),
-        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman.glb"))),
         FirstPerson {},
     ));
 }
 
 #[derive(Component)]
 pub struct FirstPerson {}
+
+#[derive(Component)]
+pub struct ActiveCamera {}
 
 #[derive(Component)]
 pub struct ClientId {
