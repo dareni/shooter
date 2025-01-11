@@ -1,7 +1,6 @@
 use crate::client::*;
 use crate::input_n_state::*;
 use crate::*;
-use bevy::prelude::*;
 
 #[derive(Event)]
 pub struct PlayerMovementEvent(pub Movement);
@@ -47,16 +46,17 @@ fn mouse_move_cmd(
     mut camera: Query<&mut Transform, With<ActiveCamera>>,
 ) {
     let mut transform = camera.get_single_mut().unwrap();
+    let mut total_mouse = Vec2::ZERO;
     for rotation in player_rotate.read() {
         let PlayerRotateEvent(delta) = rotation;
-
-        mouse_rotation.0.x -= delta.x * MOUSE_SENSITIVITY;
-        mouse_rotation.0.y -= delta.y * MOUSE_SENSITIVITY;
-
+        total_mouse.x += delta.x;
+        total_mouse.y += delta.y;
+    }
+    if total_mouse != Vec2::ZERO {
+        mouse_rotation.0.x -= total_mouse.x * MOUSE_SENSITIVITY;
+        mouse_rotation.0.y -= total_mouse.y * MOUSE_SENSITIVITY;
         let x_quat = Quat::from_axis_angle(Vec3::new(0., 1., 0.), mouse_rotation.0.x);
-
         let y_quat = Quat::from_axis_angle(Vec3::new(1., 0., 0.), mouse_rotation.0.y);
-
         transform.rotation = x_quat * y_quat;
     }
 }
@@ -64,30 +64,27 @@ fn mouse_move_cmd(
 fn keyboard_move_cmd(
     mut player_movement: EventReader<PlayerMovementEvent>,
     mut camera: Query<&mut Transform, With<ActiveCamera>>,
+    sender: ResMut<MultiplayerMessageSender>,
+    r_client: ResMut<RenetClient>,
 ) {
     let mut transform = camera.get_single_mut().unwrap();
 
     for mv in player_movement.read() {
         println!("{:?}", mv.0);
-        match mv {
-            PlayerMovementEvent(Movement::Forward) => {
-                let forward: Dir3 = transform.forward();
-                transform.translation += *forward;
-            }
-            PlayerMovementEvent(Movement::Back) => {
-                let back: Dir3 = transform.back();
-                //transform.rotate
-                transform.translation += *back;
-            }
-            PlayerMovementEvent(Movement::Left) => {
-                let left: Dir3 = transform.left();
-                transform.translation += *left;
-            }
-            PlayerMovementEvent(Movement::Right) => {
-                let right: Dir3 = transform.right();
-                transform.translation += *right;
-            } //_  => {}
-        }
+        let dir = match mv {
+            PlayerMovementEvent(Movement::Forward) => transform.forward(),
+            PlayerMovementEvent(Movement::Back) => transform.back(),
+            PlayerMovementEvent(Movement::Left) => transform.left(),
+            PlayerMovementEvent(Movement::Right) => transform.right(),
+        };
+        transform.translation += *dir;
+        sender
+            .sender
+            .send(MultiplayerMessage::Move {
+                client_id: r_client.get_client_id(),
+                location: transform.translation,
+            })
+            .expect("Could not send MultiplayerMessage::Move from keyboard");
     }
 }
 
@@ -118,7 +115,7 @@ pub fn update_world_from_server_messages(
         match message {
             MultiplayerMessage::Connect {
                 client_id,
-                pos,
+                location,
                 direction: _,
                 name,
             } => {
@@ -128,7 +125,7 @@ pub fn update_world_from_server_messages(
                           is_spawned = true;
                           match first_person {
                               Some(_) => {
-                                  transform.translation = pos;
+                                  transform.translation = location;
                                   println!("Littleman connected and positioned.");
                               }
                               None => {
@@ -143,10 +140,11 @@ pub fn update_world_from_server_messages(
                     println!("spawn player {}", name);
                     commands.spawn((
                         Name::new(name),
-                        Transform::from_translation(pos),
+                        Transform::from_translation(location),
                         ClientId { id: client_id },
                         SceneRoot(
-                            asset_server.load(GltfAssetLabel::Scene(0).from_asset("littleman.glb")),
+                            asset_server
+                                .load(GltfAssetLabel::Scene(0).from_asset("littleman1.glb")),
                         ),
                     ));
                 }
@@ -162,6 +160,24 @@ pub fn update_world_from_server_messages(
                                 //remove the disconnected player.
                                 println!("disconnect player cid:{}", client_id);
                                 commands.entity(entity).despawn_recursive();
+                            }
+                        }
+                    }
+                });
+            }
+            MultiplayerMessage::Move {
+                client_id,
+                location,
+            } => {
+                players.iter_mut().for_each(|(_entity, cid, mut transform, first_person)| {
+                    if client_id == cid.id  {
+                        match first_person {
+                            Some(_) => {
+                                eprintln!("Disconnect is not propagated by the payload layer?? cid:{}", client_id);
+                            }
+                            None => {
+                                //move the player.
+                                transform.translation = location;
                             }
                         }
                     }

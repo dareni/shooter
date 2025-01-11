@@ -87,12 +87,10 @@ fn server(addr: SocketAddr, private_key: [u8; NETCODE_KEY_BYTES]) {
         }
 
         for (destination, message) in messages_to_deliver.iter() {
-            for client_id in server.clients_id().iter().filter(|cid| {
-                match destination {
-                    Destination::All => true,
-                    Destination::Player(id) => id == *cid,
-                    //Destination::NotPlayer(id) => id != *cid,
-                }
+            for client_id in server.clients_id().iter().filter(|cid| match destination {
+                Destination::All => true,
+                Destination::Player(id) => id == *cid,
+                Destination::NotPlayer(id) => id != *cid,
             }) {
                 match message.get_buf() {
                     Ok(buf) => {
@@ -142,9 +140,36 @@ fn handle_server_result(
                 Ok(mess) => {
                     let id = mess.get_id();
                     //let username = usernames.get(&client_id).unwrap();
-                    let username: &str = players.get(&client_id).unwrap().name.as_ref();
-                    //println!( "Client {} ({}) sent message {:?}.", username, client_id, text);
-                    println!("Client {} ({}) sent message {:?}.", username, client_id, id);
+                    let opt_player: Option<&mut Player> = players.get_mut(&client_id);
+                    match opt_player {
+                        Some(player) => {
+                            let username: &str = player.name.as_ref();
+                            //println!( "Client {} ({}) sent message {:?}.", username, client_id, text);
+                            println!("Client {} ({}) sent message {:?}.", username, client_id, id);
+                            match mess {
+                                MultiplayerMessage::Connect { .. } => println!(
+                                   "Client should not send MultiplayerMessage::Connect to the server."
+                                ),
+                                MultiplayerMessage::Disconnect { .. } => println!(
+                                    "Client should not send MultiplayerMessage::Disconnect to the server."
+                                ),
+                                MultiplayerMessage::Move {
+                                    client_id,
+                                    location,
+                                } => {
+                                    println!("Player moved so setting player location");
+                                    player.location = location;
+                                    messages_to_deliver.push((Destination::NotPlayer(client_id), mess));
+                                },
+                                MultiplayerMessage::None => {
+                                    eprintln!("MultiplayerMessage::None received at the server from cid {}", client_id);
+                                }
+                            };
+                        }
+                        None => {
+                            println!("Player does not exist! Can not move.");
+                        }
+                    }
                 }
                 _ => {
                     println!("multiplayer message error??")
@@ -187,6 +212,7 @@ fn handle_server_result(
             }
             push_disconnect_client_messages(client_id, messages_to_deliver);
         }
+
         ServerResult::None => {}
     }
 }
@@ -209,7 +235,7 @@ fn push_new_client_messages(
     let new_player: &Player = players.get(&new_client_id).unwrap();
     let msg = MultiplayerMessage::Connect {
         client_id: new_client_id,
-        pos: new_player.pos,
+        location: new_player.location,
         direction: new_player.direction,
         name: new_player.name.clone(),
     };
@@ -217,13 +243,13 @@ fn push_new_client_messages(
     //Send the new player connect to itself and all existing players.
     messages_to_deliver.push((Destination::All, msg));
 
-    //Send Multiplayer::Connect to new client for all existing players.
+    //Send Multiplayer::Connect to the new client for all existing players.
     for (c_id, player) in players.iter() {
         if *c_id != new_client_id {
             //get the details of an existing player
             let existing_player_msg = MultiplayerMessage::Connect {
                 client_id: *c_id,
-                pos: player.pos,
+                location: player.location,
                 direction: player.direction,
                 name: player.name.clone(),
             };
@@ -239,7 +265,7 @@ fn initialise_new_player(players: &mut HashMap<u64, Player>, name: String) -> Pl
     let mut num = get_player_num(players) as f32;
     num = num + 1.0;
     Player {
-        pos: Vec3::new(num * 4., 4., 0.),
+        location: Vec3::new(num * 4., 4., 0.),
         direction: Vec3::new(0., 0., 0.),
         name,
         num: num as u8,
@@ -258,7 +284,7 @@ fn get_player_num(players: &HashMap<u64, Player>) -> u8 {
 }
 
 struct Player {
-    pos: Vec3,
+    location: Vec3,
     direction: Vec3,
     name: String,
     //used to calculate the starting point of littleman.
@@ -267,7 +293,7 @@ struct Player {
 
 enum Destination {
     Player(u64),
-    //NotPlayer(u64),
+    NotPlayer(u64),
     All,
 }
 
@@ -276,14 +302,14 @@ fn test_get_player_num() {
     let mut players: HashMap<u64, Player> = HashMap::new();
     assert_eq!(0, get_player_num(&players));
     let player = Player {
-        pos: Vec3::new(0., 0., 0.),
+        location: Vec3::new(0., 0., 0.),
         direction: Vec3::new(0., 0., 0.),
         name: "shrubbo".to_string(),
         num: 0,
     };
     players.insert(111, player);
     let player = Player {
-        pos: Vec3::new(0., 0., 0.),
+        location: Vec3::new(0., 0., 0.),
         direction: Vec3::new(0., 0., 0.),
         name: "shrubbo1".to_string(),
         num: 5,
@@ -291,7 +317,7 @@ fn test_get_player_num() {
     players.insert(222, player);
     assert_eq!(5, get_player_num(&players));
     let player = Player {
-        pos: Vec3::new(0., 0., 0.),
+        location: Vec3::new(0., 0., 0.),
         direction: Vec3::new(0., 0., 0.),
         name: "shrubbo".to_string(),
         num: 6,

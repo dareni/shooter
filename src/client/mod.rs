@@ -28,18 +28,21 @@ pub struct MultiplayerMessageReceiver {
 pub enum MultiplayerMessage {
     Connect {
         client_id: u64,
-        pos: Vec3,
+        location: Vec3,
         direction: Vec3,
         name: String,
     },
     Disconnect {
         client_id: u64,
     },
-    // Move {
-    //     player_id: u16,
-    //     pos: Vec3,
-    //     direction: Vec3,
-    // },
+    Move {
+        client_id: u64,
+        location: Vec3,
+    },
+    //    Rotate {
+    //        client_id: u64,
+    //        direction: Vec2,
+    //    },
     None,
 }
 impl MultiplayerMessage {
@@ -48,7 +51,8 @@ impl MultiplayerMessage {
             MultiplayerMessage::None => 0,
             MultiplayerMessage::Connect { .. } => 1,
             MultiplayerMessage::Disconnect { .. } => 2,
-            //MultiplayerMessage::Move { .. } => 2,
+            MultiplayerMessage::Move { .. } => 3,
+            //MultiplayerMessage::Rotate { .. } => 4,
         }
     }
 
@@ -59,15 +63,15 @@ impl MultiplayerMessage {
         match self {
             MultiplayerMessage::Connect {
                 client_id,
-                pos,
+                location,
                 direction,
                 name,
             } => {
                 cursor.write(&self.get_id().to_le_bytes())?;
                 cursor.write(&client_id.to_le_bytes())?;
-                cursor.write(&pos.x.to_le_bytes())?;
-                cursor.write(&pos.y.to_le_bytes())?;
-                cursor.write(&pos.z.to_le_bytes())?;
+                cursor.write(&location.x.to_le_bytes())?;
+                cursor.write(&location.y.to_le_bytes())?;
+                cursor.write(&location.z.to_le_bytes())?;
                 cursor.write(&direction.x.to_le_bytes())?;
                 cursor.write(&direction.y.to_le_bytes())?;
                 cursor.write(&direction.z.to_le_bytes())?;
@@ -81,7 +85,17 @@ impl MultiplayerMessage {
                 cursor.write(&client_id.to_le_bytes())?;
                 Ok(cursor.into_inner())
             }
-            //MultiplayerMessage::Move { .. } => Ok(cursor.into_inner()),
+            MultiplayerMessage::Move {
+                client_id,
+                location,
+            } => {
+                cursor.write(&self.get_id().to_le_bytes())?;
+                cursor.write(&client_id.to_le_bytes())?;
+                cursor.write(&location.x.to_le_bytes())?;
+                cursor.write(&location.y.to_le_bytes())?;
+                cursor.write(&location.z.to_le_bytes())?;
+                Ok(cursor.into_inner())
+            }
             MultiplayerMessage::None => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -99,7 +113,7 @@ impl MultiplayerMessage {
             [1] => {
                 //let _id: u16 = u16::from_le_bytes(read_bytes::<2>(cursor)?);
                 let client_id: u64 = u64::from_le_bytes(read_bytes::<8>(cursor)?);
-                let pos: Vec3 = Vec3::new(
+                let location: Vec3 = Vec3::new(
                     f32::from_le_bytes(read_bytes::<4>(cursor)?),
                     f32::from_le_bytes(read_bytes::<4>(cursor)?),
                     f32::from_le_bytes(read_bytes::<4>(cursor)?),
@@ -118,7 +132,7 @@ impl MultiplayerMessage {
                     .expect("Error extract name from buf for MultiplayerMessage");
                 Ok(MultiplayerMessage::Connect {
                     client_id,
-                    pos,
+                    location,
                     direction,
                     name,
                 })
@@ -126,6 +140,18 @@ impl MultiplayerMessage {
             [2] => {
                 let client_id: u64 = u64::from_le_bytes(read_bytes::<8>(cursor)?);
                 Ok(MultiplayerMessage::Disconnect { client_id })
+            }
+            [3] => {
+                let client_id: u64 = u64::from_le_bytes(read_bytes::<8>(cursor)?);
+                let location: Vec3 = Vec3::new(
+                    f32::from_le_bytes(read_bytes::<4>(cursor)?),
+                    f32::from_le_bytes(read_bytes::<4>(cursor)?),
+                    f32::from_le_bytes(read_bytes::<4>(cursor)?),
+                );
+                Ok(MultiplayerMessage::Move {
+                    client_id,
+                    location,
+                })
             }
             _ => Ok(MultiplayerMessage::None),
         }
@@ -437,7 +463,7 @@ mod test {
     fn test_multiplayermessage_connect() {
         let mess = MultiplayerMessage::Connect {
             client_id: 77u64,
-            pos: Vec3::new(1.1f32, 2.2f32, 3.3f32),
+            location: Vec3::new(1.1f32, 2.2f32, 3.3f32),
             direction: Vec3::new(4.4f32, 5.5f32, 6.6f32),
             name: "ikky".to_string(),
         };
@@ -447,12 +473,12 @@ mod test {
         match connect {
             MultiplayerMessage::Connect {
                 client_id,
-                pos,
+                location,
                 direction,
                 name,
             } => {
                 assert_eq!(client_id, 77);
-                assert_eq!(pos, Vec3::new(1.1f32, 2.2f32, 3.3f32));
+                assert_eq!(location, Vec3::new(1.1f32, 2.2f32, 3.3f32));
                 assert_eq!(direction, Vec3::new(4.4f32, 5.5f32, 6.6f32));
                 assert_eq!(name, "ikky".to_string());
             }
@@ -469,6 +495,27 @@ mod test {
         match disconnect {
             MultiplayerMessage::Disconnect { client_id } => {
                 assert_eq!(client_id, 77);
+            }
+            _ => panic!("test_multiplayermessage_connect fail!"),
+        }
+    }
+    #[test]
+    fn test_multiplayermessage_move() {
+        let mess = MultiplayerMessage::Move {
+            client_id: 78u64,
+            location: Vec3::new(1., 2., 3.),
+        };
+        let buf = mess.get_buf().unwrap();
+        let move_msg: MultiplayerMessage = MultiplayerMessage::get(&buf).unwrap().into();
+        match move_msg {
+            MultiplayerMessage::Move {
+                client_id,
+                location,
+            } => {
+                assert_eq!(client_id, 78);
+                assert_eq!(location.x, 1.);
+                assert_eq!(location.y, 2.);
+                assert_eq!(location.z, 3.);
             }
             _ => panic!("test_multiplayermessage_connect fail!"),
         }
