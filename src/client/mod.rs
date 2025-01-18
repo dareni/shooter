@@ -367,11 +367,15 @@ pub fn do_multiplayer_disconnect(mut r_client: ResMut<RenetClient>) {
     r_client.disconnect();
 }
 
+//Also called from mod player::update_world_from_server_messages on a server disconnect.
 pub fn do_finish_disconnect(
     r_client: ResMut<RenetClient>,
     mut commands: Commands,
     mut players: Query<(Entity, &ClientId, Option<&FirstPerson>)>,
+    mut next_multiplayer: ResMut<NextState<MultiplayerState>>,
 ) {
+    //MultiplayerState will not be Disconnecting when called by mod player so set the state here.
+    next_multiplayer.set(MultiplayerState::Disconnecting);
     match r_client.client.as_ref() {
         Some(client) => {
             if client.is_disconnected() {

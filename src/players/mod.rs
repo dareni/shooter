@@ -29,9 +29,15 @@ impl Plugin for PlayersPlugin {
         app.insert_resource(MouseRotation(Vec2::ZERO));
         app.add_systems(
             Update,
-            update_world_from_server_messages.run_if(resource_exists::<MultiplayerMessageReceiver>),
+            update_world_from_server_messages.run_if(
+                resource_exists::<MultiplayerMessageReceiver>
+                    .and(not(in_state(MultiplayerState::Disconnecting))),
+            ),
         );
-        app.add_systems(Update, keyboard_move_cmd);
+        app.add_systems(
+            Update,
+            keyboard_move_cmd.run_if(in_state(MultiplayerState::Connected)),
+        );
         app.add_systems(Update, mouse_move_cmd);
         app.add_systems(
             OnEnter(MultiplayerState::Connected),
@@ -154,7 +160,11 @@ pub fn update_world_from_server_messages(
                     if client_id == cid.id  {
                         match first_person {
                             Some(_) => {
-                                eprintln!("Disconnect is not propagated by the payload layer?? cid:{}", client_id);
+                                println!("Client disconnect initiated by the server, a timeout?  cid:{}",
+                                    client_id);
+                                let finish_disconnect_cmd = commands.
+                                    register_system(client::do_finish_disconnect);
+                                commands.run_system(finish_disconnect_cmd);
                             }
                             None => {
                                 //remove the disconnected player.
