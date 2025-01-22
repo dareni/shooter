@@ -17,6 +17,12 @@ pub const PRIVATE_KEY: &[u8; 32] = b"an example very very secret key."; // 32-by
 pub const PROTOCOL_ID: u64 = 123456789;
 pub const PORT: u32 = 5000;
 
+#[derive(serde::Deserialize, serde::Serialize, Reflect, Clone)]
+pub struct Server {
+    pub name: String,
+    pub url: String,
+}
+
 pub struct Username(pub String);
 impl Username {
     pub fn to_netcode_user_data(&self) -> [u8; NETCODE_USER_DATA_BYTES] {

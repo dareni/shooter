@@ -175,6 +175,7 @@ pub fn get_file(config_file_buf: &OsString, read_file: bool) -> Result<File, Str
 
 #[test]
 fn test_get_file() {
+    use crate::server::Server;
     let path_string = get_config_file_path();
     let string_path = path_string.unwrap().into_string().unwrap();
     println!("Location of config file for shooter: {}", string_path);
@@ -189,6 +190,17 @@ fn test_get_file() {
     let app_params = AppParams {
         player_name: "shrubbo".to_string(),
         window_size: crate::Vec2::new(640.0, 480.0),
+        server_list: vec![
+            Server {
+                name: String::from("local"),
+                url: String::from("localhost:5000"),
+            },
+            Server {
+                name: String::from("backup"),
+                url: String::from("backup:5000"),
+            },
+        ],
+        last_server_index: 0,
         config_file: None,
         changed: false,
     };

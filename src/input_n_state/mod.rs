@@ -1,6 +1,7 @@
 use crate::config::do_read_config;
 use crate::config::get_file;
 use crate::players::*;
+use crate::server::Server;
 use crate::KeyboardInput;
 use bevy::prelude::*;
 use bevy_input::{mouse::AccumulatedMouseMotion, ButtonState};
@@ -45,14 +46,22 @@ impl AppParamsInput {
 pub struct AppParams {
     pub player_name: String,
     pub window_size: Vec2,
+    pub server_list: Vec<Server>,
+    // A negative index is to a item in edit mode.
+    pub last_server_index: i8,
+    // AppParams persistence location.
     pub config_file: Option<String>,
+    // AppParams changed an not persisted.
     pub changed: bool,
 }
+
 impl AppParams {
     pub fn dup(&self) -> AppParams {
         AppParams {
             player_name: self.player_name.clone(),
             window_size: self.window_size.clone(),
+            server_list: self.server_list.clone(),
+            last_server_index: self.last_server_index,
             config_file: self.config_file.clone(),
             changed: self.changed,
         }
@@ -61,9 +70,17 @@ impl AppParams {
         AppParams {
             player_name: "player1".to_string(),
             window_size: Vec2::new(640.0, 480.0),
+            server_list: vec![Server {
+                name: String::from("localhost"),
+                url: String::from("0.0.0.0:5000"),
+            }],
+            last_server_index: 0,
             config_file: None,
             changed: true,
         }
+    }
+    pub fn set_last_server_index(&mut self, index: i8) {
+        self.last_server_index = index;
     }
 }
 
