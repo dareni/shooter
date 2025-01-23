@@ -324,7 +324,7 @@ pub fn spawn_server_window(
             }
             ui.separator();
 
-            if app_params.player_name.len() > 3 {
+            if app_params.player_name.len() > 3 && !app_params.last_server_index < 0 {
                 if ui.button("Connect").clicked() {
                     let mut r_client = RenetClient::new();
                     let connection = app_params
@@ -341,7 +341,12 @@ pub fn spawn_server_window(
                     ui.close_menu();
                 };
             } else {
-                println!("Configuration of 'Player Name' required before connecting.");
+                if app_params.player_name.len() < 4 {
+                    println!(
+                        "Configuration of 'Player Name' (minimum of 3 characters)\
+                    required before connecting."
+                    );
+                }
             }
         });
 }
