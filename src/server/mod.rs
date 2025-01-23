@@ -159,6 +159,8 @@ fn handle_server_result(
                             //println!( "Client {} ({}) sent message {:?}.", username, client_id, text);
                             println!("Client {} ({}) sent message {:?}.", username, client_id, id);
                             match mess {
+                                //Note: Client connects and disconnects are handled at the renet client
+                                //level, so the server should not receive these messages.
                                 MultiplayerMessage::Connect { .. } => println!(
                                    "Client should not send MultiplayerMessage::Connect to the server."
                                 ),

@@ -133,7 +133,7 @@ impl Plugin for InputNStatePlugin {
             keyboard_event_system.run_if(in_state(AppState::Game)),
         );
         app.add_systems(Update, mouse_event_system.run_if(in_state(AppState::Game)));
-        app.add_systems(OnEnter(AppState::GameOver), app_exit);
+        app.add_systems(Update, app_exit.run_if(in_state(AppState::GameOver)));
         app.add_plugins(WorldInspectorPlugin::default().run_if(do_world_inspector()));
         app.add_plugins(
             ResourceInspectorPlugin::<AppParams>::default().run_if(do_world_inspector()),
@@ -252,8 +252,18 @@ fn mouse_event_system(
     }
 }
 
-fn app_exit(mut app_exit_event_writer: EventWriter<AppExit>) {
-    app_exit_event_writer.send(AppExit::Success);
+fn app_exit(
+    mut app_exit_event_writer: EventWriter<AppExit>,
+    multiplayer_state: Res<State<MultiplayerState>>,
+    mut next_multiplayer: ResMut<NextState<MultiplayerState>>,
+) {
+    if multiplayer_state.get().eq(&MultiplayerState::Connected) {
+        next_multiplayer.set(MultiplayerState::Predisconnecting);
+    } else if multiplayer_state.get().eq(&MultiplayerState::Disconnected) {
+        app_exit_event_writer.send(AppExit::Success);
+    } else {
+        println!("waiting for disconnect {:?} ... ", multiplayer_state.get());
+    }
 }
 
 fn do_world_inspector() -> impl Condition<()> {
