@@ -103,6 +103,7 @@ pub enum MultiplayerState {
     #[default]
     Disconnected,
     Disconnecting,
+    Predisconnecting,
     Connected,
     Connecting,
 }

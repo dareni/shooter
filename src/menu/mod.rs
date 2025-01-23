@@ -364,7 +364,7 @@ pub fn spawn_player_window(
             if app_params.player_name.len() > 3 {
                 if !r_client.is_disconnected() {
                     if ui.button("Disconnect").clicked() {
-                        next_multiplayer.set(MultiplayerState::Disconnecting);
+                        next_multiplayer.set(MultiplayerState::Predisconnecting);
                         next_menu_item.set(MenuItem::None);
                         ui.close_menu();
                     };

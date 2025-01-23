@@ -31,7 +31,8 @@ impl Plugin for PlayersPlugin {
             Update,
             update_world_from_server_messages.run_if(
                 resource_exists::<MultiplayerMessageReceiver>
-                    .and(not(in_state(MultiplayerState::Disconnecting))),
+                    .and(not(in_state(MultiplayerState::Disconnecting)
+                        .or(in_state(MultiplayerState::Predisconnecting)))),
             ),
         );
         app.add_systems(

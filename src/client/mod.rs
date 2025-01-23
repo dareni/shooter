@@ -270,7 +270,7 @@ impl RenetClient {
             .as_ref()
             .expect("RenetClient not initialized!");
 
-        //Send data from this client to all other clients.
+        //Send data from this client to all other clients via the server.
         if r_client.is_connected() {
             let mut _rx = self.receiver.lock().unwrap();
             for message in _rx.try_iter() {
@@ -377,35 +377,46 @@ pub fn do_finish_disconnect(
     mut commands: Commands,
     mut players: Query<(Entity, &ClientId, Option<&FirstPerson>)>,
     mut next_multiplayer: ResMut<NextState<MultiplayerState>>,
+    multiplayer_state: Res<State<MultiplayerState>>,
 ) {
-    //MultiplayerState will not be Disconnecting when called by mod player so set the state here.
-    next_multiplayer.set(MultiplayerState::Disconnecting);
-    match r_client.client.as_ref() {
-        Some(client) => {
-            if client.is_disconnected() {
-                players
-                    .iter_mut()
-                    .for_each(|(entity, _client_id, first_person)| {
-                        println!("removing entity: {} for disconnect.", entity);
-                        match first_person {
-                            Some(_) => {
-                                commands.entity(entity).remove::<ClientId>();
+    if multiplayer_state.get().eq(&MultiplayerState::Disconnecting) {
+        match r_client.client.as_ref() {
+            Some(client) => {
+                if client.is_disconnected() {
+                    players
+                        .iter_mut()
+                        .for_each(|(entity, _client_id, first_person)| {
+                            println!("removing entity: {} for disconnect.", entity);
+                            match first_person {
+                                Some(_) => {
+                                    commands.entity(entity).remove::<ClientId>();
+                                }
+                                None => {
+                                    commands.entity(entity).despawn_recursive();
+                                }
                             }
-                            None => {
-                                commands.entity(entity).despawn_recursive();
-                            }
-                        }
-                    });
+                        });
 
-                commands.remove_resource::<MultiplayerMessageSender>();
-                commands.remove_resource::<MultiplayerMessageReceiver>();
-                commands.remove_resource::<RenetClient>();
-                println!("disconnected.");
+                    commands.remove_resource::<MultiplayerMessageSender>();
+                    commands.remove_resource::<MultiplayerMessageReceiver>();
+                    commands.remove_resource::<RenetClient>();
+                    println!("disconnected.");
+                }
+            }
+            None => {
+                println!(
+                    "do_finish_disconnect: Client is not disconnected in disconnecting state??"
+                );
             }
         }
-        None => {
-            println!("do_finish_disconnect: Client is not disconnected in disconnecting state??");
-        }
+    } else if multiplayer_state
+        .get()
+        .eq(&MultiplayerState::Predisconnecting)
+    {
+        next_multiplayer.set(MultiplayerState::Disconnecting);
+    } else {
+        //MultiplayerState will not be Disconnecting when called by mod player so set the state here.
+        next_multiplayer.set(MultiplayerState::Predisconnecting);
     }
 }
 
@@ -432,20 +443,24 @@ impl Plugin for ClientPlugin {
                 .run_if(in_state(MultiplayerState::Connected).and(resource_exists::<RenetClient>)),
         );
         app.add_systems(
-            OnEnter(MultiplayerState::Disconnecting),
+            OnEnter(MultiplayerState::Predisconnecting),
             do_multiplayer_disconnect.run_if(resource_exists::<RenetClient>),
         );
         app.add_systems(
             Update,
             do_finish_disconnect.run_if(
-                in_state(MultiplayerState::Disconnecting).and(resource_exists::<RenetClient>),
+                in_state(MultiplayerState::Disconnecting)
+                    .or(in_state(MultiplayerState::Predisconnecting))
+                    .and(resource_exists::<RenetClient>),
             ),
         );
         app.add_systems(OnEnter(MultiplayerState::Connecting), set_connected);
 
         app.add_systems(
             Update,
-            set_disconnected.run_if(resource_removed::<RenetClient>),
+            set_disconnected.run_if(
+                in_state(MultiplayerState::Disconnecting).and(resource_removed::<RenetClient>),
+            ),
         );
     }
 }

@@ -28,13 +28,12 @@ System update_world_from_server_messages runs while the MultiplayerMessageReceiv
 
 Multiplayer Disconnect
 ----------------------
-Disconnect button on Players window -> sets MultiplayerState::Disconnecting.
+Disconnect button on Players window -> sets MultiplayerState::Predisconnecting.
 
-System client::do_multiplayer_disconnect runs on_enter MultiplayerState::Disconnecting and calls RenetClient.disconnect() which
+System client::do_multiplayer_disconnect runs on_enter MultiplayerState::Predisconnecting and calls RenetClient.disconnect() which
 sends a disconnect packet to the server.
 
-System client::do_finish_disconnect runs on MultiplayerState::Disconnecting if the RenetClient resource exists.
-If the RenetClient is disconnected it is removed from bevy along with MultiplayerMessageSender, MultiplayerMessageReceiver.
+System client::do_finish_disconnect runs on MultiplayerState::Predisconnecting & MultiplayerState::Disconnecting if the RenetClient resource exists.  If the RenetClient is disconnected it is removed from bevy along with MultiplayerMessageSender, MultiplayerMessageReceiver.
 
 System menu::set_disconnected runs if resource RenetClient is removed and sets MultiplayerState::Disconnected.
 
