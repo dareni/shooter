@@ -72,7 +72,7 @@ impl AppParams {
             window_size: Vec2::new(640.0, 480.0),
             server_list: vec![Server {
                 name: String::from("localhost"),
-                url: String::from("0.0.0.0:5000"),
+                url: String::from("127.0.0.1:5000"),
             }],
             last_server_index: 0,
             config_file: None,

@@ -47,8 +47,14 @@ impl Username {
     }
 }
 
-pub fn server_main() {
-    let server_addr: SocketAddr = format!("127.0.0.1:{}", PORT).parse().unwrap();
+pub fn server_main(connection: Option<&str>) {
+    let server_addr: SocketAddr = match connection {
+        Some(con) => con
+            .parse()
+            .expect(format!("Not a valid connection: {} ", con).as_str()),
+        None => format!("127.0.0.1:{}", PORT).parse().unwrap(),
+    };
+    //let server_addr: SocketAddr = format!("127.0.0.1:{}", PORT).parse().unwrap();
     server(server_addr, *PRIVATE_KEY);
 }
 

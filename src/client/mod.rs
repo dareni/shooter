@@ -205,13 +205,16 @@ impl RenetClient {
 
     pub fn connect(
         &mut self,
-        user_name: String,
+        user_name: &String,
+        connection: &String,
     ) -> (Sender<MultiplayerMessage>, Receiver<MultiplayerMessage>) {
-        let server_addr: SocketAddr = format!("127.0.0.1:{}", PORT).parse().unwrap();
+        //let server_addr: SocketAddr = format!("127.0.0.1:{}", PORT).parse().unwrap();
+        println!("Attempting connection: {} ...", connection);
+        let server_addr: SocketAddr = connection.parse().unwrap();
         let username = Username(user_name.clone());
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         println!(
-            "Stating connecting at {:?} with username {}",
+            "Starting connecting at {:?} with username {}",
             now, username.0,
         );
         let client_id = now.as_millis() as u64;
@@ -228,7 +231,8 @@ impl RenetClient {
         )
         .unwrap();
         let authentication = ClientAuthentication::Secure { connect_token };
-        self.udp_socket = Some(UdpSocket::bind("127.0.0.1:0").unwrap());
+        //self.udp_socket = Some(UdpSocket::bind("127.0.0.1:0").unwrap());
+        self.udp_socket = Some(UdpSocket::bind("0.0.0.0:4999").unwrap());
         self.udp_socket
             .as_ref()
             .unwrap()

@@ -26,11 +26,25 @@ fn main() {
         match exec_type.as_str() {
             "--server" => {
                 println!("Starting server...");
-                server_main();
+                if args.len() > 2 {
+                    let connection = &args[2];
+                    server_main(Some(connection));
+                } else {
+                    server_main(None);
+                }
                 return;
             }
             "--help" => {
-                println!("--config [alternate filename]");
+                println!("\nRun client with an alternate configuration:");
+                println!("    --config [alternate filename]");
+                println!(
+                    "\nStart server on custom connection ie\n\
+                    + ipv4 192.168.1.4\n\
+                    + ipv6 2001:8003:e95b:100:9007:deff:fe70:1840"
+                );
+                println!("    --server [connection]");
+                println!("\nStart server on local loopback");
+                println!("    --server");
                 return;
             }
 

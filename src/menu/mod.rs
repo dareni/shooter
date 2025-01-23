@@ -327,7 +327,11 @@ pub fn spawn_server_window(
             if app_params.player_name.len() > 3 {
                 if ui.button("Connect").clicked() {
                     let mut r_client = RenetClient::new();
-                    let (sender, rx) = r_client.connect(app_params.player_name.clone());
+                    let connection = app_params
+                        .server_list
+                        .get(app_params.last_server_index as usize)
+                        .expect("Server connection deleted???");
+                    let (sender, rx) = r_client.connect(&app_params.player_name, &connection.url);
                     commands.insert_resource(r_client);
                     commands.insert_resource(MultiplayerMessageSender { sender });
                     let receiver = Mutex::new(rx);
